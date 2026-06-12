@@ -1,0 +1,5 @@
+{
+  "name": "ai-coding-insights",
+  "description": "Scan your own Claude Code sessions (all by default, or scoped to your team's repos via config), score AI-usage tiers, render a local HTML report.",
+  "version": "0.1.0"
+}

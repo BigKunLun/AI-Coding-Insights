@@ -1,0 +1,30 @@
+"""能力盲区检测（无 IO 纯函数）。
+
+对照「高杠杆能力全集」与窗口内实际用过的工具（aggregate.tool_session_counts
+的 key 集合），列出还没用过的能力 + 行为级使用场景一句话。场景文案禁业务词。
+"""
+
+# (label, 检测谓词(tools 集合), 场景一句话)
+_CAPABILITIES = [
+    ("SubAgent 委派", lambda ts: "Agent" in ts,
+     "多个独立查询/子任务时并行派子代理，隔离主上下文、成倍提速"),
+    ("Workflow 编排", lambda ts: "Workflow" in ts,
+     "大规模迁移/审计/多视角评审时，用确定性脚本编排几十个子代理"),
+    ("MCP 外部工具", lambda ts: any(t.startswith("mcp__") for t in ts),
+     "接入文档查询/网页阅读等外部数据源，减少凭记忆作答"),
+    ("Skill 调用", lambda ts: "Skill" in ts,
+     "用斜杠命令沉淀重复流程（提交、评审、调试），一次调用替代长提示"),
+    ("计划模式", lambda ts: "EnterPlanMode" in ts or "ExitPlanMode" in ts,
+     "动手前让 AI 先出实施计划再批准执行，减少做一半推翻重来"),
+    ("任务清单", lambda ts: "TaskCreate" in ts or "TodoWrite" in ts,
+     "多步任务让 AI 维护进度清单，长会话不丢步骤"),
+    ("Web 取证", lambda ts: "WebSearch" in ts or "WebFetch" in ts,
+     "涉及库版本/外部事实时让 AI 实时检索，而非依赖训练记忆"),
+]
+
+
+def unused_capabilities(tool_session_counts: dict) -> list[dict]:
+    """返回 [{"label", "scene"}...]，全部用过则空列表。"""
+    tools = set(tool_session_counts or {})
+    return [{"label": label, "scene": scene}
+            for label, used, scene in _CAPABILITIES if not used(tools)]

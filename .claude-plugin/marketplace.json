@@ -1,0 +1,13 @@
+{
+  "name": "ai-coding-insights",
+  "owner": {
+    "name": "shijianing"
+  },
+  "plugins": [
+    {
+      "name": "ai-coding-insights",
+      "source": "./",
+      "description": "Scan your own Claude Code sessions (all by default, or scoped to your team's repos via config), score AI-usage tiers, render a local HTML report."
+    }
+  ]
+}

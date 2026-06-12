@@ -1,0 +1,19 @@
+# AI-Coding-Insights 配置示例。
+#
+# 个人自查（默认形态）：不需要本文件——零配置即 mode = "all"，分析本机全部会话。
+# 团队评估：复制本文件按需修改，放 ~/.claude/ai-coding-insights/config.toml（个人自管），
+# 或命名为 config.toml 放插件根目录随插件分发（团队统一下发，优先级更高）。
+# 也可用向导从本机数据勾选生成：uv run python -m ai_coding_insights init
+
+mode = "include"
+lookback_days = 30
+# 脱敏兜底：列入则画像 summary/evidence 含这些词会校验失败。
+# 必须放在所有 [[include_remotes]] 之前——TOML 表头之后的键值都归属该表，顶层取不到。
+business_terms = []
+
+[[include_remotes]]
+host = "git.example.com"     # 自建 git：整域纳入
+
+[[include_remotes]]
+host = "github.com"          # 公共托管域：必须给 org，只纳入该组织
+org = "example-org"

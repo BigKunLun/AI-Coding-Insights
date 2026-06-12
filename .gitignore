@@ -1,0 +1,14 @@
+# 本机生成的评估报告（个人产物，不进 git）
+aci-report-*.html
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# macOS
+.DS_Store
+
+/config.toml
