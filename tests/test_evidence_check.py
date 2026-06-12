@@ -62,3 +62,22 @@ def test_flag_missing_pointers_tolerates_absent_lists():
     out, misses = flag_missing_pointers({"evidence": "not-a-list"}, lambda p, u: True)
     assert out["evidence"] == "not-a-list"
     assert misses == []
+
+
+def test_friction_pointers_normalized_and_flagged():
+    from ai_coding_insights.evidence_check import flag_missing_pointers
+    prof = {"frictions": [
+        {"observation": "o", "suggestion": "s",
+         "pointers": ["/a.jsonl#u1", "/fake.jsonl#ux"]},
+        {"observation": "o2", "suggestion": "s2", "pointers": []},
+    ]}
+    ok = lambda path, uuid: path == "/a.jsonl" and uuid == "u1"
+    out, misses = flag_missing_pointers(prof, ok)
+    p0 = out["frictions"][0]["pointers"]
+    # 字符串归一成 dict，命中的不带 pointer_missing，未命中的标注
+    assert p0[0] == {"pointer": "/a.jsonl#u1"}
+    assert p0[1]["pointer"] == "/fake.jsonl#ux" and p0[1]["pointer_missing"] is True
+    assert misses == ["/fake.jsonl#ux"]
+    assert out["frictions"][1]["pointers"] == []
+    # 入参不被修改
+    assert prof["frictions"][0]["pointers"][0] == "/a.jsonl#u1"

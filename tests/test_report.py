@@ -56,8 +56,9 @@ def test_render_profile_outcome_prefers_hard_metrics():
             "session_count": 1, "included_projects": []}
     metrics = {"commit_count": 40, "landed_count": 30, "landed_ratio": 0.75}
     html = render_profile_report(profile, meta, metrics=metrics)
-    assert "落地 30 / 共 40" in html
-    assert "落地 1 / 共 2" not in html
+    # 旧口径 metrics（缺 git 键）→ 退到 transcript 硬证据：落地 30、丢弃 40-30=10
+    assert "落地 30 · 观测丢弃 10" in html
+    assert "落地 1 ·" not in html
 
 
 def test_format_run_meta_full():

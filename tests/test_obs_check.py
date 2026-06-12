@@ -8,7 +8,8 @@ extractor 漏抽低信息会话、/tmp 残留上一轮 obs 被专家静默误读
 import json
 from pathlib import Path
 
-from ai_coding_insights.obs_check import check_obs_coverage
+from ai_coding_insights.obs_check import (check_obs_coverage, check_posture_counts,
+                                          sum_posture_counts)
 from ai_coding_insights.cli import main
 
 
@@ -48,18 +49,65 @@ def test_empty_batches_and_obs_ok():
     assert res["batch_session_count"] == 0
 
 
+def test_posture_counts_valid_passes():
+    obs = [{"session_id": "s1", "posture_counts": {"L1": 2, "L2": 0, "L3": 1, "L4": 0}}]
+    assert check_posture_counts({"s1": 3}, obs) == []
+
+
+def test_posture_counts_missing_key_flagged():
+    obs = [{"session_id": "s1", "notable_turns": []}]   # 缺 posture_counts
+    problems = check_posture_counts({"s1": 0}, obs)
+    assert problems == [{"session_id": "s1", "reason": "缺 posture_counts"}]
+
+
+def test_posture_counts_sum_mismatch_flagged():
+    obs = [{"session_id": "s1", "posture_counts": {"L1": 1, "L2": 0, "L3": 0, "L4": 0}}]
+    problems = check_posture_counts({"s1": 3}, obs)
+    assert len(problems) == 1 and "总和 1" in problems[0]["reason"]
+
+
+def test_posture_counts_bad_values_flagged():
+    obs = [{"session_id": "s1", "posture_counts": {"L1": -1, "L2": True, "L3": 0.5, "L4": 0}}]
+    problems = check_posture_counts({"s1": 0}, obs)
+    assert len(problems) == 1 and "非负整数" in problems[0]["reason"]
+
+
+def test_posture_counts_orphan_session_skipped():
+    # 不属于任何 batch 的 obs 会话由覆盖校验报 orphan，这里不重复报
+    obs = [{"session_id": "ghost", "posture_counts": {"L1": 1, "L2": 0, "L3": 0, "L4": 0}}]
+    assert check_posture_counts({}, obs) == []
+
+
+def test_sum_posture_counts_aggregates():
+    obs = [{"session_id": "s1", "posture_counts": {"L1": 2, "L2": 1, "L3": 3, "L4": 0}},
+           {"session_id": "s2", "posture_counts": {"L1": 1, "L2": 0, "L3": 0, "L4": 2}}]
+    assert sum_posture_counts(obs) == {"L1": 3, "L2": 1, "L3": 3, "L4": 2}
+
+
+def test_sum_posture_counts_defensive():
+    obs = [{"session_id": "s1"},                                   # 缺键
+           {"session_id": "s2", "posture_counts": {"L1": -5, "L2": True, "L4": 1}}]
+    assert sum_posture_counts(obs) == {"L1": 0, "L2": 0, "L3": 0, "L4": 1}
+    assert sum_posture_counts([]) == {"L1": 0, "L2": 0, "L3": 0, "L4": 0}
+    assert sum_posture_counts(None) == {"L1": 0, "L2": 0, "L3": 0, "L4": 0}
+
+
 # ---------- CLI ----------
 
-def _write_batch(d: Path, nn: str, sids: list[str]):
+def _write_batch(d: Path, nn: str, sids: list[str], turns_by_sid: dict | None = None):
     (d / f"batch-{nn}.json").write_text(
-        json.dumps([{"session_id": s, "turns": []} for s in sids], ensure_ascii=False),
+        json.dumps([{"session_id": s, "turns": (turns_by_sid or {}).get(s, [])}
+                    for s in sids], ensure_ascii=False),
         encoding="utf-8")
 
 
-def _write_obs(d: Path, nn: str, sids: list[str]):
+def _write_obs(d: Path, nn: str, sids: list[str], counts: dict | None = None):
     (d / f"aci-obs-{nn}.json").write_text(
-        json.dumps({"sessions": [{"session_id": s, "notable_turns": []} for s in sids]},
-                   ensure_ascii=False),
+        json.dumps({"sessions": [
+            {"session_id": s, "notable_turns": [],
+             "posture_counts": (counts or {}).get(
+                 s, {"L1": 0, "L2": 0, "L3": 0, "L4": 0})}
+            for s in sids]}, ensure_ascii=False),
         encoding="utf-8")
 
 
@@ -111,3 +159,30 @@ def test_cli_unreadable_obs_is_mismatch(tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["status"] == "mismatch"
     assert out["unreadable"] == [str(tmp_path / "aci-obs-01.json")]
+
+
+def test_cli_posture_sum_mismatch_is_mismatch(tmp_path, capsys):
+    batches = tmp_path / "batches"; batches.mkdir()
+    _write_batch(batches, "01", ["s1"], {"s1": [{"uuid": "u1", "text": "a"},
+                                                {"uuid": "u2", "text": "b"}]})
+    _write_obs(tmp_path, "01", ["s1"], {"s1": {"L1": 1, "L2": 0, "L3": 0, "L4": 0}})
+    rc = main(["verify-obs", "--batches", str(batches),
+               "--obs-glob", str(tmp_path / "aci-obs-*.json")])
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "mismatch"
+    assert out["posture_invalid"][0]["session_id"] == "s1"
+    assert out["posture_invalid"][0]["file"] == str(batches / "batch-01.json")
+
+
+def test_cli_missing_posture_counts_is_mismatch(tmp_path, capsys):
+    batches = tmp_path / "batches"; batches.mkdir()
+    _write_batch(batches, "01", ["s1"])
+    (tmp_path / "aci-obs-01.json").write_text(
+        json.dumps({"sessions": [{"session_id": "s1", "notable_turns": []}]}),
+        encoding="utf-8")
+    rc = main(["verify-obs", "--batches", str(batches),
+               "--obs-glob", str(tmp_path / "aci-obs-*.json")])
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out)
+    assert any("posture_counts" in p["reason"] for p in out["posture_invalid"])

@@ -30,8 +30,16 @@ class CommitRef:
     kind: str
 
 
+@dataclass(frozen=True)
+class RepoOutcome:
+    """单仓库窗口级 git 成果（git log × 会话时间窗细口径归属，见 git_outcome.py）。"""
+    landed_count: int     # 落入某会话时间窗(±宽限)的本人提交数（HEAD 祖先=已落地硬证据）
+    outside_count: int    # 窗口内本人提交但在所有会话窗之外（仅参考，不进任何比率）
+
+
 @dataclass
 class ParsedSession:
+    # --- 必填字段（无默认值）---
     file_path: str
     session_id: str
     cwd: str
@@ -41,6 +49,7 @@ class ParsedSession:
     models_used: list[str]
     first_ts: str | None
     last_ts: str | None
+    # --- 可选字段（有默认值）---
     commits: list = field(default_factory=list)   # list[CommitRef]
     edit_count: int = 0
     token_usage: dict = field(default_factory=dict)  # {model: {input,output,cache_read,cache_creation}}
@@ -99,37 +108,49 @@ class AggregateMetrics:
     session_count: int
     human_input_count: int          # = sum(每会话 turn_count)
     active_days: int                # 不同自然日(UTC)数
+    avg_turns: float
+    tool_breadth: int               # 去重工具种类数(跨所有会话)
+    tool_session_counts: dict       # {tool: 用到它的会话数}
     subagent_sessions: int          # tools_used 含 "Agent" 的会话数
     workflow_sessions: int          # 含 "Workflow" 的会话数
     mcp_sessions: int               # 含任一以 "mcp__" 开头的工具的会话数
+    model_counts: dict              # {model: 用到它的会话数}
     commit_count: int               # sum
     landed_count: int               # sum
     edit_count: int                 # sum
-    tool_breadth: int               # 去重工具种类数(跨所有会话)
-    tool_session_counts: dict       # {tool: 用到它的会话数}
-    model_counts: dict              # {model: 用到它的会话数}
+    duration_median_min: float | None  # 剔跨天污染后的时长中位数(分钟);无有效值则 None
     project_breakdown: dict         # {cwd: {"sessions","commits","landed","edits"}}
     anchor_counts: dict             # {"override","error","code","link": 命中该锚点的 turn 总数}
-    avg_turns: float
-    duration_median_min: float | None  # 剔跨天污染后的时长中位数(分钟);无有效值则 None
 
     # === 可选字段（有默认值）===
+    token_usage: dict = field(default_factory=dict)  # {model: {input,output,cache_read,cache_creation}} 跨会话累加
+    token_total: int = 0                             # 四项跨模型总和(含cache,非计费口径)，进快照同比
+    trend: dict | None = None                        # 窗口前半 vs 后半硬指标对比;会话/时间戳不足则 None
     short_turn_count: int = 0       # 窗口内极短输入总数（L1 硬锚分子）
     option_pick_count: int = 0      # 窗口内 AskUserQuestion 已答题总数（L2 硬锚分子）
     decision_point_count: int = 0   # = human_input_count + option_pick_count（姿势分布分母）
+    git_landed_count: int = 0       # git 主锚：窗口内本人提交 × 会话窗归属（与奖励挂钩）
+    git_outside_count: int = 0      # 窗口内本人提交但在会话窗外（参考）
+    friction_stats: dict = field(default_factory=dict)  # error/override 会话集中度 + 轮次 top（纯数字，无业务语义，供教练专家个性化判摩擦）
     plan_mode_sessions: int = 0     # 使用过 EnterPlanMode/ExitPlanMode 的会话数
     plan_mode_count: int = 0        # 跨会话 EnterPlanMode 总次数
     concurrent_days: int = 0        # 出现过并发(≥2个重叠≥300s的会话)的天数
     claude_md_sessions: int = 0     # 编辑过 CLAUDE.md 的会话数
     max_concurrent_sessions: int = 1  # 窗口内最大并发会话数（≥300s 重叠）
-    token_usage: dict = field(default_factory=dict)  # {model: {input,output,cache_read,cache_creation}} 跨会话累加
     skill_counts: dict = field(default_factory=dict)       # {skill_name: 使用会话数}
     mcp_server_counts: dict = field(default_factory=dict)  # {server_name: 使用会话数}
-    token_total: int = 0               # 四项跨模型总和(含cache,非计费口径)，进快照同比
-    trend: dict | None = None          # 窗口前半 vs 后半硬指标对比;会话/时间戳不足则 None
     daily: list = field(default_factory=list)  # [{date, session_count, human_input_count, commit_count, landed_count, edit_count, token_total}]
     custom_skill_count: int = 0        # 用户自建 skill 文件数（来自文件系统扫描，非 transcript）
 
     @property
+    def dropped_count(self) -> int:
+        # transcript 观测到但已不在 HEAD 历史的提交（被 reset/丢弃的硬证据）
+        return max(0, self.commit_count - self.landed_count)
+
+    @property
     def landed_ratio(self) -> float:
-        return self.landed_count / self.commit_count if self.commit_count else 0.0
+        # 已知证据下的落地率：git 主锚落地 /（落地 + 已知丢弃）。
+        # transcript 不可观测（commit_count=0，如旧版 CC 无 gitOperation 回执）时
+        # dropped 未知按 0 计——有 git 落地即 1.0，无任何证据为 0.0。
+        denom = self.git_landed_count + self.dropped_count
+        return self.git_landed_count / denom if denom else 0.0

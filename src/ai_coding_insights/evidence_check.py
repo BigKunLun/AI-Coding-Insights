@@ -38,6 +38,8 @@ def flag_missing_pointers(profile: dict, pointer_ok) -> tuple[dict, list[str]]:
 
     pointer_ok(path, uuid_or_None) -> bool 由调用方注入（IO 在外，便于直接测试）。
     返回 (新 profile, 未命中指针原文列表)；不修改入参。
+    frictions[].pointers（字符串列表）同样核验，并归一为
+    {"pointer", pointer_missing?} dict 供渲染直接消费。
     """
     out = dict(profile or {})
     misses = []
@@ -54,4 +56,23 @@ def flag_missing_pointers(profile: dict, pointer_ok) -> tuple[dict, list[str]]:
                     misses.append(str(e.get("pointer", "")))
             new_items.append(e)
         out[key] = new_items
+
+    # 摩擦指针：frictions[].pointers 是字符串列表（LLM 契约），此处归一成
+    # {"pointer", pointer_missing?} dict——渲染端与证据共用 _ptr_chip 消费。
+    frs = out.get("frictions")
+    if isinstance(frs, list):
+        new_frs = []
+        for f in frs:
+            if isinstance(f, dict) and isinstance(f.get("pointers"), list):
+                entries = []
+                for p in f["pointers"]:
+                    entry = {"pointer": str(p)}
+                    path, uuid = split_pointer(p)
+                    if not (path and pointer_ok(path, uuid)):
+                        entry["pointer_missing"] = True
+                        misses.append(str(p))
+                    entries.append(entry)
+                f = {**f, "pointers": entries}
+            new_frs.append(f)
+        out["frictions"] = new_frs
     return out, misses

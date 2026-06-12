@@ -199,8 +199,8 @@ def test_dashboard_v5_structured_dimensions():
     # headline 进卡片副题
     assert "工具广度跨 8 类，覆盖检索/编辑/编排" in html
     assert 'class="dim-card-sub"' in html
-    # outcome 仍附落地/共
-    assert "落地 37 / 共 46" in html
+    # outcome 仍附落地/丢弃（git 主锚口径：旧口径 metrics 缺 git 键退到 transcript 硬证据）
+    assert "落地 37 · 观测丢弃 9" in html
 
 
 def test_dashboard_v5_frictions_block():
@@ -258,8 +258,8 @@ def test_dashboard_v5_compat_old_profile():
     assert "档位判据" not in html
     # 无 frictions 时不出摩擦板块
     assert "摩擦 + 建议" not in html
-    # 落地仍渲染
-    assert "落地 10 / 共 12" in html
+    # 落地仍渲染（无 metrics → 兜底 LLM 抄值：landed=10、丢弃=total-landed=2）
+    assert "落地 10 · 观测丢弃 2" in html
 
 
 # ---- Task 7: 六处新板块 ----
@@ -314,6 +314,30 @@ def test_report_metrics_present_but_trend_token_absent():
     assert "能力盲区" in html
 
 
+def test_report_outcome_uses_git_anchor():
+    m = {**_metrics(), "git_landed_count": 8, "dropped_count": 3,
+         "commit_count": 10, "landed_count": 7, "edit_count": 40,
+         "landed_ratio": 8 / 11}
+    html = render_profile_report(_profile(), _meta(), m, None)
+    assert "落地提交" in html
+    assert "观测丢弃" in html
+    assert "≈5" in html          # 编辑/落地 = 40/8
+
+
+def test_trend_hides_commit_rows_when_unobservable():
+    trend = {"first_half": {"sessions": 2, "commits": 0, "landed": 0,
+                            "landed_ratio": 0.0, "override": 1, "error": 0,
+                            "short_ratio": 0.1},
+             "second_half": {"sessions": 2, "commits": 0, "landed": 0,
+                             "landed_ratio": 0.0, "override": 0, "error": 1,
+                             "short_ratio": 0.2}}
+    html = render_profile_report(_profile(), _meta(),
+                                 {**_metrics(), "trend": trend}, None)
+    assert "窗口内趋势" in html              # 趋势板块本身照常渲染
+    assert "落地率</td>" not in html         # transcript 不可观测时不出 0% 假行
+    assert "提交（次/会话）" not in html
+
+
 # ---- KPI strip 已整排移除（与下方指标卡纯属重复，速览职责归三组指标卡）----
 
 def _metrics_with_trend_token():
@@ -364,9 +388,11 @@ def test_trend_zero_sessions_no_crash():
 
 
 def test_stage_card_criteria_table():
-    # 判据对照行：左判据文案，右「实际值 ✓/✗」。METRICS_V5 下 L3+L4=75%、广度 28 → 第3档，
-    # 当前档判据全 ✓；距第4档缺 L4≥35%（实际 18%）列为 ✗
-    html = render_profile_report(_profile(), _meta(), _metrics(), None)
+    # 判据对照行：左判据文案，右「实际值 ✓/✗」。v2 阈值下 L3+L4=75%、广度 28 满足精通；
+    # 压低落地率使其停在第3档，距第4档缺 落地率≥50% 列为 ✗
+    metrics = dict(_metrics())
+    metrics["landed_ratio"] = 0.3
+    html = render_profile_report(_profile(), _meta(), metrics, None)
     assert "档位判据" in html
     assert "75%" in html        # L3+L4 实际
     assert "28 种" in html      # 工具广度实际
@@ -432,5 +458,27 @@ def test_dashboard_no_mode_renders_no_scope_pill():
 
 def test_posture_card_anchoring_footnote():
     html = render_profile_report(_profile(), _meta(), _metrics(), None)
-    assert "L1/L2 由硬信号" in html
-    assert "含 AskUserQuestion 选项回答" in html   # L2 图例口径说明（图例独有串）
+    assert "逐条语义分档" in html                  # v2 口径底注
+    assert "AskUserQuestion 选项回答" in html      # L2 图例口径说明
+    assert "极短输入" not in html                  # 旧口径文案不得残留
+
+
+def test_friction_card_renders_pointer_chips():
+    prof = dict(_profile())
+    prof["frictions"] = [{
+        "observation": "报错集中 —— 2/10 会话贡献全部 error 锚点",
+        "suggestion": "贴报错前先读 traceback 末三行并写明怀疑点，以同类报错往返轮次下降为验证",
+        "pointers": [{"pointer": "/tmp/s1.jsonl#u1"},
+                     {"pointer": "/tmp/gone.jsonl#ux", "pointer_missing": True}],
+    }]
+    html = render_profile_report(prof, _meta(), _metrics(), None)
+    assert "fr-ptrs" in html
+    assert html.count("ptr-chip") >= 2
+    assert "⚠ 指针未命中" in html
+
+
+def test_friction_card_without_pointers_renders_clean():
+    prof = dict(_profile())
+    prof["frictions"] = [{"observation": "观察", "suggestion": "建议", "pointers": []}]
+    html = render_profile_report(prof, _meta(), _metrics(), None)
+    assert '<div class="fr-ptrs">' not in html   # 空指针不出空容器（CSS 规则恒在，只查 HTML 容器）

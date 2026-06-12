@@ -1,15 +1,14 @@
 def validate_profile(obj, business_terms=()) -> list[str]:
     """返回错误信息列表；空列表 = 通过。零三方依赖的轻量校验。
 
-    顶层须含 l4_share：L4 在 L3+L4 中的份额，0-1 数字。四档分布（L1-L4）由规则层
-    硬算后组装，不再由 LLM 输出；故已废弃的 posture_distribution 一旦出现即报错并
-    指引改用 l4_share（喂回 SKILL 的重写重试环）。
+    画像不含任何姿势字段：posture_distribution 与 l4_share 均已废弃，出现即报错
+    （喂回 SKILL 重写重试环）。四档分布由规则层从 obs 的 posture_counts 聚合组装。
 
     维度块（breadth/depth/outcome）支持两种形态，均接受（缺字段不报错）：
       - 旧版散文：summary(str)
       - v5 结构化：headline(str) + points(list[str]) + metrics(list[{label,value}])
-    顶层可选 frictions(list)：每项须含 observation(str) + suggestion(str)；
-    无 frictions 键不报错。
+    顶层可选 frictions(list)：每项须含 observation(str) + suggestion(str) +
+    pointers(list[str]，可为空)；无 frictions 键不报错。
     顶层可选 highlights(list)：每项须含 pointer + behavior(str)，结构与 evidence
     条目一致；无 highlights 键不报错。
 
@@ -24,13 +23,11 @@ def validate_profile(obj, business_terms=()) -> list[str]:
     if not isinstance(obj, dict):
         return ["画像必须是 JSON 对象"]
     if "posture_distribution" in obj:
-        errs.append("posture_distribution 已废弃：改为返回 l4_share"
-                    "（L4 在 L3+L4 中的份额，0-1 数字），L1/L2 由规则层硬算")
-    ls = obj.get("l4_share")
-    if not isinstance(ls, (int, float)) or isinstance(ls, bool):
-        errs.append("l4_share 必须是 0-1 的数字（L4 在 L3+L4 中的份额）")
-    elif not (0 <= ls <= 1):
-        errs.append(f"l4_share 须在 0-1 之间，实际 {ls}")
+        errs.append("posture_distribution 已废弃：四档分布由规则层从 obs 聚合组装，"
+                    "画像不含任何姿势字段，删除该键")
+    if "l4_share" in obj:
+        errs.append("l4_share 已废弃：四档分布由规则层从 obs 的 posture_counts "
+                    "聚合组装，删除该键")
     for dim in ("breadth", "depth", "outcome"):
         d = obj.get(dim)
         if not isinstance(d, dict):
@@ -58,8 +55,11 @@ def validate_profile(obj, business_terms=()) -> list[str]:
         else:
             for f in fr:
                 if not isinstance(f, dict) or not isinstance(f.get("observation"), str) \
-                        or not isinstance(f.get("suggestion"), str):
-                    errs.append("每条 frictions 须含 observation 与 suggestion（字符串）")
+                        or not isinstance(f.get("suggestion"), str) \
+                        or not isinstance(f.get("pointers"), list) \
+                        or not all(isinstance(p, str) for p in f["pointers"]):
+                    errs.append("每条 frictions 须含 observation 与 suggestion（字符串）"
+                                "及 pointers（字符串列表，可为空但键必填）")
                     break
     ev = obj.get("evidence")
     if not isinstance(ev, list) or not ev:
@@ -126,6 +126,10 @@ def validate_profile(obj, business_terms=()) -> list[str]:
                     texts.append((f"frictions[{i}].observation", f["observation"]))
                 if isinstance(f.get("suggestion"), str):
                     texts.append((f"frictions[{i}].suggestion", f["suggestion"]))
+                if isinstance(f.get("pointers"), list):
+                    for j, p in enumerate(f["pointers"]):
+                        if isinstance(p, str):
+                            texts.append((f"frictions[{i}].pointers[{j}]", p))
         for term in business_terms:
             for field, text in texts:
                 if term in text:

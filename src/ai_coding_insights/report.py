@@ -47,7 +47,7 @@ def _fmt_tokens(n) -> str:
 
 # ---- L1-L4 图例（静态文案；占比渲染时拼接）----
 _LEGEND_ITEMS = [
-    ("L1", "跟随", "极短输入 / 纯放行"),
+    ("L1", "跟随", "纯放行 / 跟随确认，未在 AI 已给信息之外增加信息"),
     ("L2", "选择", "只选 AI 给的选项，不加约束（含 AskUserQuestion 选项回答）"),
     ("L3", "引导", "主动给目标 / 约束 / 格式，贴报错追问"),
     ("L4", "主导", "带技术具体性纠错，推翻方案，给 AI 没想到的约束"),
@@ -134,6 +134,11 @@ def _render_trend_section(trend: dict | None, idx: int) -> str:
     sh_n = int(sh.get("sessions") or 0)
     rows_html = ""
     for name, key, kind in _TREND_ROWS:
+        if key in ("commits", "landed_ratio") and not (
+                _fnum(fh.get("commits")) or _fnum(sh.get("commits"))):
+            # trend 的提交数据来自 transcript 口径：两半全 0 多半是不可观测
+            # （如旧版 CC 无 gitOperation 回执），是测不到不是没提交，0% 假行不出。
+            continue
         a_raw, b_raw = _fnum(fh.get(key)), _fnum(sh.get(key))
         if kind == "ratio":
             a, b = a_raw, b_raw
@@ -633,8 +638,16 @@ def render_profile_report(profile: dict, meta: dict,
     # 必须以可独立验证的 metrics 为准，LLM 转抄值只作缺数时的降级显示。
     landed_ratio = mval("landed_ratio", o_ratio if o_total else None)
     edit_count = mval("edit_count", None)
-    commit_count = mval("commit_count", o_total if o_total else None)
-    landed_count = mval("landed_count", o_landed if o_total else None)
+    # git 主锚口径：落地数取 git_landed_count。降级链：旧口径 metrics（缺 git 键，
+    # 如旧 _aggregate）退到 transcript 硬证据（landed_count 经 HEAD 验证，是 git 落地
+    # 的下界）；metrics 整体缺席才用 LLM 抄值（profile.outcome 的 landed/total 已是
+    # 新语义：landed=git 落地、total=落地+观测丢弃）。
+    git_landed = mval("git_landed_count",
+                      mval("landed_count", o_landed if o_total else None))
+    _cc, _lc = mval("commit_count"), mval("landed_count")
+    dropped = mval("dropped_count",
+                   max(0, int(_cc) - int(_lc)) if _cc is not None and _lc is not None
+                   else ((o_total - o_landed) if o_total else None))
 
     def num(v):
         return "—" if v is None else escape(str(v))
@@ -648,6 +661,15 @@ def render_profile_report(profile: dict, meta: dict,
         if isinstance(diff, dict) and key in diff and isinstance(diff[key], dict):
             return _fmt_delta(diff[key])
         return ""
+
+    def dur(v):
+        """时长中位数：None→「—」，有值→「N + min 单位」。"""
+        if v is None:
+            return "—"
+        try:
+            return f'{round(float(v))}<span class="unit">min</span>'
+        except (TypeError, ValueError):
+            return "—"
 
     # ---- 横幅四数 = 四维代表值 ----
     avg_turns = mval("avg_turns")
@@ -664,27 +686,30 @@ def render_profile_report(profile: dict, meta: dict,
     )
 
     # ---- 01 指标明细：三族，不重复横幅四数 ----
-    edits_per_landed = ("—" if not (edit_count and landed_count)
-                        else f"≈{round(float(edit_count) / float(landed_count))}")
+    edits_per_landed = ("—" if not (edit_count and git_landed)
+                        else f"≈{round(float(edit_count) / float(git_landed))}")
+    token_usage = m.get("token_usage") or {}
+    model_switch = num(len(token_usage) if token_usage else None)
     families = [
         ("产出落地", "#0d9488", "#0f766e", [
-            ("提交数", num(commit_count), diff_html("commit_count")),
-            ("合入数", num(None if landed_count is None else int(landed_count)),
-             diff_html("landed_count")),
+            ("落地提交", num(None if git_landed is None else int(git_landed)),
+             diff_html("git_landed_count")),
+            ("观测丢弃", num(None if dropped is None else int(dropped)),
+             diff_html("dropped_count")),
             ("编辑数", num(edit_count), diff_html("edit_count")),
-            ("编辑/合入", edits_per_landed, ""),
+            ("编辑/落地", edits_per_landed, ""),
         ]),
         ("协作编排", "#4f46e5", "#4338ca", [
             ("SubAgent 会话", num(mval("subagent_sessions")), diff_html("subagent_sessions")),
             ("Workflow 会话", num(mval("workflow_sessions")), diff_html("workflow_sessions")),
             ("MCP 会话", num(mval("mcp_sessions")), diff_html("mcp_sessions")),
-            ("Plan Mode 会话", num(mval("plan_mode_sessions")), diff_html("plan_mode_sessions")),
+            ("模型切换", model_switch, ""),
         ]),
         ("节奏投入", "#7c3aed", "#6d28d9", [
             ("会话数", num(mval("session_count")), diff_html("session_count")),
             ("有效输入", num(mval("human_input_count")), diff_html("human_input_count")),
             ("活跃天数", num(mval("active_days")), diff_html("active_days")),
-            ("最大并发", num(mval("max_concurrent_sessions")), diff_html("max_concurrent_sessions")),
+            ("时长中位数", dur(mval("duration_median_min")), diff_html("duration_median_min")),
         ]),
     ]
     fam_html = ""
@@ -723,8 +748,8 @@ def render_profile_report(profile: dict, meta: dict,
         '<div class="card-title">姿势分布（主导性）</div>'
         f'<div class="stack">{segs}</div>'
         f'<div class="lg-list">{legend_html}</div>'
-        '<div class="fine-note">L1/L2 由硬信号（极短输入 / 选项回答）确定性计算；'
-        'L3/L4 分界由 LLM 判定。</div>'
+        '<div class="fine-note">四档由 LLM 对每条真人输入逐条语义分档、规则层聚合组装；'
+        'AskUserQuestion 选项回答按协议硬信号计入 L2。</div>'
         '</div>'
     )
     if stage is not None:
@@ -758,10 +783,10 @@ def render_profile_report(profile: dict, meta: dict,
     def _headline(block: dict) -> str:
         return escape(str(block.get("headline") or block.get("summary") or ""))
 
-    # 成果代表行附「落地 X / 共 Y」。与横幅同源：硬指标优先。
-    landed_disp = "—" if commit_count is None else f"{int(landed_count or 0)}"
-    total_disp = "—" if commit_count is None else f"{int(commit_count)}"
-    outcome_desc = f"落地 {landed_disp} / 共 {total_disp}"
+    # 成果代表行附「落地 X · 观测丢弃 Y」（git 主锚口径）。与横幅同源：硬指标优先。
+    landed_disp = "—" if git_landed is None else f"{int(git_landed)}"
+    dropped_disp = "—" if dropped is None else f"{int(dropped)}"
+    outcome_desc = f"落地 {landed_disp} · 观测丢弃 {dropped_disp}"
     if _headline(outcome):
         outcome_desc = f"{_headline(outcome)} · {outcome_desc}"
     dim_rows = [
@@ -790,24 +815,29 @@ def render_profile_report(profile: dict, meta: dict,
         + _dim_card("水平", "水平 · 工具广度", breadth)
         + _dim_card("成果", "成果 · 落地", outcome,
                     extra_rows=(f'<div class="pt-row pt-last"><div class="pt-title">'
-                                f'落地 {landed_disp} / 共 {total_disp}</div></div>'))
+                                f'落地 {landed_disp} · 观测丢弃 {dropped_disp}</div></div>'))
         + '</div>'
         + _depth_card(depth)
     )
 
     # ---- 05 摩擦 + 建议 ----
+    projects = meta.get("included_projects", []) or []
     frictions = profile.get("frictions", []) or []
-    fr_items = "".join(
-        '<div class="card fr-card">'
-        f'<div class="fr-obs">{_split_lead(f.get("observation", ""))}</div>'
-        '<div class="fr-box"><span class="tag tag-advice">建议</span>'
-        f'<span class="fr-sug">{escape(str(f.get("suggestion", "")))}</span></div>'
-        '</div>'
-        for f in frictions
-    )
+    fr_items = ""
+    for f in frictions:
+        ptr_chips = "".join(_ptr_chip(p, projects) for p in (f.get("pointers") or [])
+                            if isinstance(p, dict))
+        ptr_html = f'<div class="fr-ptrs">{ptr_chips}</div>' if ptr_chips else ""
+        fr_items += (
+            '<div class="card fr-card">'
+            f'<div class="fr-obs">{_split_lead(f.get("observation", ""))}</div>'
+            f'{ptr_html}'
+            '<div class="fr-box"><span class="tag tag-advice">建议</span>'
+            f'<span class="fr-sug">{escape(str(f.get("suggestion", "")))}</span></div>'
+            '</div>'
+        )
 
     # ---- 附录 B 证据链（默认折叠）----
-    projects = meta.get("included_projects", []) or []
     evidence = profile.get("evidence", []) or []
     ev_rows = ""
     for i, e in enumerate(evidence):
@@ -849,7 +879,8 @@ def render_profile_report(profile: dict, meta: dict,
     elif diff.get("baseline"):
         diff_note = "首次基线，暂无同比"
     else:
-        labels = {"landed_ratio": "落地率", "commit_count": "提交数",
+        labels = {"landed_ratio": "落地率", "git_landed_count": "落地提交",
+                  "dropped_count": "观测丢弃", "commit_count": "会话内提交",
                   "edit_count": "编辑数", "session_count": "会话数",
                   "human_input_count": "有效输入", "tool_breadth": "工具广度",
                   "active_days": "活跃天数"}
@@ -888,7 +919,6 @@ def render_profile_report(profile: dict, meta: dict,
         idx += 1
         sections.append(_render_capabilities_section(m.get("tool_session_counts"), idx,
                                                       customization_signals=m.get("customization_signals")))
-    # 热力图（07 活动热力）——原趋势顺延为 08
     heatmap_html = _render_daily_heatmap(m.get("daily"), idx + 1)
     if heatmap_html:
         idx += 1
@@ -1040,12 +1070,7 @@ b{{font-weight:700}}
 .fr-list{{display:grid;gap:12px}}
 .fr-card{{padding:18px 22px}}
 .fr-obs{{font-size:13.5px;color:#344054;line-height:1.7}}
-.fr-box{{display:flex;gap:10px;margin-top:10px;background:#fffaeb;border:1px solid #fdeac2;
-  border-radius:8px;padding:10px 14px}}
-.fr-sug{{font-size:13px;color:#57534e;line-height:1.7}}
-/* ---- 06 能力盲区 ---- */
-.cap-card{{padding:18px 22px;display:grid;gap:10px}}
-.cap-row{{display:flex;gap:12px;font-size:13.5px;color:#344054;line-height:1.7}}
+.fr-ptrs{{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}}
 /* ---- 07 活动热力 ---- */
 .heatmap{{display:grid;grid-template-rows:auto auto auto;gap:4px;margin-top:8px}}
 .h-mo-row{{display:grid;grid-template-columns:repeat(var(--h-cols),1fr);grid-column:2}}
@@ -1056,7 +1081,22 @@ b{{font-weight:700}}
 .h-cell{{width:28px;height:28px;border-radius:4px;cursor:help}}
 .h-legend{{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:11px;color:#7d8694}}
 .h-leg-swatch{{display:inline-block;width:14px;height:14px;border-radius:3px}}
-/* ---- 08 趋势 / 附录表格 ---- */
+/* ---- 工具/技能/MCP 附录 ---- */
+.tok-block{{margin-bottom:8px}}
+.tok-block summary{{cursor:pointer;font-size:12.5px;font-weight:600;color:#475467;padding:4px 0;list-style:none}}
+.tok-block summary::-webkit-details-marker{{display:none}}
+.tok-chart{{margin-top:8px;display:grid;gap:5px}}
+.tok-row{{display:grid;grid-template-columns:160px 1fr 50px;gap:10px;align-items:center;font-size:12px}}
+.tok-label{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#344054;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.tok-bar-wrap{{height:10px;border-radius:3px;background:#eef1f6;overflow:hidden}}
+.tok-bar{{height:100%;border-radius:3px;background:linear-gradient(90deg,#22a3c4,#6366f1)}}
+.fr-box{{display:flex;gap:10px;margin-top:10px;background:#fffaeb;border:1px solid #fdeac2;
+  border-radius:8px;padding:10px 14px}}
+.fr-sug{{font-size:13px;color:#57534e;line-height:1.7}}
+/* ---- 06 能力盲区 ---- */
+.cap-card{{padding:18px 22px;display:grid;gap:10px}}
+.cap-row{{display:flex;gap:12px;font-size:13.5px;color:#344054;line-height:1.7}}
+/* ---- 07 趋势 / 附录表格 ---- */
 .trend-card{{padding:8px 22px 16px}}
 table.trend{{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}}
 table.trend th{{padding:12px 8px 9px;text-align:left;font-size:12px;color:#7d8694;

@@ -4,7 +4,6 @@ from pathlib import Path
 from ai_coding_insights.cli import main
 
 _PROFILE = {
-    "l4_share": 0.4,
     "breadth": {"summary": "广度摘要", "tools": ["Edit", "Bash"]},
     "depth": {"summary": "深度摘要"},
     "outcome": {"summary": "成果摘要", "landed": 3, "total": 5},
@@ -35,35 +34,58 @@ def _write_metrics(tmp_path, name="metrics.json", **overrides):
     return p
 
 
-def test_render_profile_assembles_posture_from_hard_signals(tmp_path, capsys):
+def _write_obs(tmp_path, sessions):
+    """sessions: [(session_id, posture_counts)]；返回供 --obs-glob 用的 glob。"""
+    (tmp_path / "obs-01.json").write_text(json.dumps({"sessions": [
+        {"session_id": sid, "file_path": f"/tmp/{sid}.jsonl",
+         "posture_counts": pc, "notable_turns": []}
+        for sid, pc in sessions]}, ensure_ascii=False), encoding="utf-8")
+    return str(tmp_path / "obs-*.json")
+
+
+def test_render_profile_assembles_posture_from_obs_counts(tmp_path, capsys):
     prof = _write_profile(tmp_path)
-    mf = _write_metrics(tmp_path, decision_point_count=100,
-                        short_turn_count=10, option_pick_count=5)
+    mf = _write_metrics(tmp_path, option_pick_count=5)
+    glob_pat = _write_obs(tmp_path, [
+        ("s1", {"L1": 10, "L2": 5, "L3": 41, "L4": 19}),
+        ("s2", {"L1": 10, "L2": 0, "L3": 10, "L4": 0}),
+    ])
     out = tmp_path / "r.html"
     rc = main(["render-profile", "--profile", str(prof), "--metrics", str(mf),
-               "--out", str(out), "--no-snapshot",
+               "--obs-glob", glob_pat, "--out", str(out), "--no-snapshot",
                "--snapshot-dir", str(tmp_path / "snaps")])
     assert rc == 0
     html = out.read_text()
-    # 组装：L1=10/100、L2=5/100，剩余 0.85 按 l4_share=0.4 切 → L4 34%、L3 51%
-    assert "L1 跟随 10%" in html
-    assert "L2 选择 5%" in html
-    assert "L4 主导 34%" in html
-    stdout = capsys.readouterr().out
-    assert "姿势分布" in stdout            # 渲染命令向编排者回报组装结果
+    # 聚合计数 L1=20 L2=5 L3=51 L4=19，picks=5 并入 L2 → 分母 100
+    assert "L1 跟随 20%" in html
+    assert "L2 选择 10%" in html
+    assert "L3 引导 51%" in html
+    assert "L4 主导 19%" in html
+    assert "姿势分布" in capsys.readouterr().out
+
+
+def test_render_profile_without_obs_warns_and_zeroes(tmp_path, capsys):
+    prof = _write_profile(tmp_path)
+    mf = _write_metrics(tmp_path)
+    rc = main(["render-profile", "--profile", str(prof), "--metrics", str(mf),
+               "--out", str(tmp_path / "r.html"), "--no-snapshot",
+               "--snapshot-dir", str(tmp_path / "snaps")])
+    assert rc == 0
+    assert "姿势分布按全零渲染" in capsys.readouterr().err
 
 
 def test_render_profile_snapshot_stores_assembled(tmp_path):
     prof = _write_profile(tmp_path)
-    mf = _write_metrics(tmp_path, decision_point_count=100,
-                        short_turn_count=10, option_pick_count=5)
+    mf = _write_metrics(tmp_path, option_pick_count=0)
+    glob_pat = _write_obs(tmp_path, [("s1", {"L1": 1, "L2": 0, "L3": 1, "L4": 0})])
     snap_dir = tmp_path / "snaps"
     rc = main(["render-profile", "--profile", str(prof), "--metrics", str(mf),
+               "--obs-glob", glob_pat,
                "--out", str(tmp_path / "r.html"), "--snapshot-dir", str(snap_dir)])
     assert rc == 0
     snap = json.loads(next(snap_dir.glob("*.json")).read_text())
-    assert snap["posture_distribution"]["L1"] == 0.1
-    assert snap["posture_distribution"]["L2"] == 0.05
+    assert snap["posture_distribution"]["L1"] == 0.5
+    assert snap["posture_rubric"] == 2          # 口径标记：v2 逐 turn 语义分档
 
 
 def test_render_profile_with_metrics_and_snapshot(tmp_path):
@@ -268,6 +290,23 @@ def test_scan_emit_batches_empty(tmp_path, capsys):
     # 无 batch 文件
     assert not list(emit.glob("batch-*.json"))
     assert manifest["aggregate"]["session_count"] == 0
+
+
+def test_emit_batches_aggregate_has_git_anchor_keys(tmp_path, capsys):
+    # 契约：_aggregate.json 必含 git 主锚口径四键；空数据/非 git cwd → fail-safe 零值。
+    empty_projects = tmp_path / "empty_projects"
+    empty_projects.mkdir()
+    cfg = tmp_path / "c.toml"
+    cfg.write_text('lookback_days=30\n[[include_remotes]]\nhost="git.example.com"\n',
+                   encoding="utf-8")
+    emit = tmp_path / "batches"
+    rc = main(["scan", "--config", str(cfg), "--projects-dir", str(empty_projects),
+               "--emit-batches", str(emit), "--snapshot-dir", str(tmp_path / "snap")])
+    assert rc == 0
+    agg = json.loads((emit / "_aggregate.json").read_text(encoding="utf-8"))
+    for key in ("git_landed_count", "git_outside_count", "dropped_count", "landed_ratio"):
+        assert key in agg
+    assert agg["git_landed_count"] == 0
 
 
 def test_scan_since_filters(tmp_path, capsys):

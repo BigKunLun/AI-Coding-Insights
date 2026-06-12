@@ -120,7 +120,7 @@ def test_render_profile_subcommand(tmp_path, capsys):
     import json
     from ai_coding_insights.cli import main
     prof = tmp_path/"p.json"
-    prof.write_text(json.dumps({"l4_share":0.4,
+    prof.write_text(json.dumps({
         "breadth":{"summary":"b"},"depth":{"summary":"d"},"outcome":{"summary":"o","landed":1,"total":2},
         "evidence":[{"pointer":"f#u","behavior":"纠错"}]}))
     out = tmp_path/"r.html"
@@ -140,7 +140,6 @@ def test_render_profile_verifies_evidence_pointers(tmp_path, capsys):
                     "message": {"content": "hi"}}) + "\n", encoding="utf-8")
     prof = tmp_path / "p.json"
     prof.write_text(json.dumps({
-        "l4_share": 0.4,
         "breadth": {"summary": "b"}, "depth": {"summary": "d"},
         "outcome": {"summary": "o", "landed": 1, "total": 2},
         "evidence": [
@@ -164,7 +163,7 @@ def test_snapshot_only_keeps_core_scalar_keys(tmp_path):
     from ai_coding_insights.cli import main
     from ai_coding_insights.snapshot import _CORE_KEYS
     prof = tmp_path/"p.json"
-    prof.write_text(json.dumps({"l4_share":0.4,
+    prof.write_text(json.dumps({
         "breadth":{"summary":"b"},"depth":{"summary":"d"},"outcome":{"summary":"o","landed":1,"total":2},
         "evidence":[{"pointer":"f#u","behavior":"纠错"}]}))
     metrics = tmp_path/"m.json"

@@ -140,7 +140,6 @@ def test_too_soon_window_has_no_truncated_data(tmp_path):
 # ---- render-profile --window 接入 ----
 
 _PROFILE = {
-    "l4_share": 0.4,
     "breadth": {"summary": "广度摘要", "tools": ["Edit", "Bash"]},
     "depth": {"summary": "深度摘要"},
     "outcome": {"summary": "成果摘要", "landed": 3, "total": 5},

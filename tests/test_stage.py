@@ -15,7 +15,7 @@ def test_leader_stage():
 
 
 def test_master_stage_missing_landed():
-    # L4 够但落地率不够引领 → 精通期，gaps 指出落地率差距
+    # L4/L3+L4/工具都够引领，但落地率不够 → 精通期，gaps 指出落地率差距
     r = decide_stage(_pd(l3=0.30, l4=0.40), tool_breadth=20, landed_ratio=0.3)
     assert r["name"] == "精通期"
     assert any("落地率" in g["desc"] for g in r["gaps"])
@@ -40,16 +40,23 @@ def test_boundary_exact_thresholds_inclusive():
 
 
 def test_percent_form_normalized():
-    # 百分数形态（和≈100）应归一化；L4 实际 0.20 < 0.35，l34=0.60 < 0.70 → 精通期
-    r = decide_stage({"L1": 10, "L2": 30, "L3": 40, "L4": 20}, 28, 0.69)
+    # 百分数形态（和≈100）应归一化；lr=0.3 不够引领 → 精通期
+    r = decide_stage({"L1": 10, "L2": 30, "L3": 40, "L4": 20}, 28, 0.3)
     assert r["name"] != "引领期"
     assert r["name"] == "精通期"
 
 
 def test_float_boundary_sum_inclusive():
-    # L3+L4 浮点和恰 0.55，round 后应达标精通期
-    r = decide_stage({"L3": 0.08, "L4": 0.47}, 12, 0.2)
+    # L3+L4 浮点和恰 0.35（精通阈值），round 后应达标
+    r = decide_stage({"L3": 0.08, "L4": 0.27}, 12, 0.2)
     assert r["name"] == "精通期"
+
+
+def test_v2_thresholds_plain_directive_user_lands_competent():
+    # v2 口径典型画像：放行/选择为主 + 两成引导 → 进阶期（旧阈值下会掉探索期）
+    r = decide_stage(_pd(l1=0.45, l2=0.30, l3=0.20, l4=0.05), tool_breadth=8,
+                     landed_ratio=0.4)
+    assert r["name"] == "进阶期"
 
 
 def test_defensive_none_inputs():
@@ -57,27 +64,25 @@ def test_defensive_none_inputs():
     assert r["name"] == "探索期"
 
 
-def test_assemble_posture_normal():
-    # 100 决策点：10 短输入、5 picks，剩余 0.85 按 l4_share=0.4 切
-    pd = assemble_posture(100, 10, 5, 0.4)
-    assert pd == {"L1": 0.1, "L2": 0.05,
-                  "L3": round(0.85 * 0.6, 10), "L4": round(0.85 * 0.4, 10)}
+def test_assemble_posture_from_counts():
+    # LLM 计数 95 条 + 5 个 AskUserQuestion 答题 → 分母 100，picks 并入 L2
+    pd = assemble_posture({"L1": 50, "L2": 10, "L3": 25, "L4": 10}, option_pick_count=5)
+    assert pd == {"L1": 0.5, "L2": 0.15, "L3": 0.25, "L4": 0.1}
     assert abs(sum(pd.values()) - 1.0) < 1e-9
 
 
-def test_assemble_posture_zero_decision_points():
-    assert assemble_posture(0, 0, 0, 0.5) == {"L1": 0.0, "L2": 0.0, "L3": 0.0, "L4": 0.0}
+def test_assemble_posture_zero_inputs():
+    zero = {"L1": 0.0, "L2": 0.0, "L3": 0.0, "L4": 0.0}
+    assert assemble_posture({}, 0) == zero
+    assert assemble_posture(None, None) == zero
 
 
-def test_assemble_posture_share_endpoints_and_clamp():
-    assert assemble_posture(10, 0, 0, 0.0)["L4"] == 0.0
-    assert assemble_posture(10, 0, 0, 1.0)["L3"] == 0.0
-    assert assemble_posture(10, 0, 0, 1.7)["L4"] == 1.0     # share clamp 到 1
-    assert assemble_posture(10, 0, 0, None)["L4"] == 0.0    # 缺失按 0
+def test_assemble_posture_picks_only_all_l2():
+    pd = assemble_posture({"L1": 0, "L2": 0, "L3": 0, "L4": 0}, 4)
+    assert pd == {"L1": 0.0, "L2": 1.0, "L3": 0.0, "L4": 0.0}
 
 
-def test_assemble_posture_defensive_rest_floor():
-    # 防御：分子异常超过分母时剩余质量钳 0，不出负数
-    pd = assemble_posture(10, 8, 8, 0.5)
-    assert pd["L3"] == 0.0 and pd["L4"] == 0.0
-    assert all(v >= 0 for v in pd.values())
+def test_assemble_posture_defensive_bad_values():
+    # 负数/bool/非整数按 0 计；picks 非法按 0
+    pd = assemble_posture({"L1": -3, "L2": True, "L3": "x", "L4": 10}, "bad")
+    assert pd == {"L1": 0.0, "L2": 0.0, "L3": 0.0, "L4": 1.0}

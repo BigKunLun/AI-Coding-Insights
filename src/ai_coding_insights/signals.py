@@ -142,11 +142,12 @@ def compute_concurrency(sessions, overlap_threshold_sec: int = 300
     return (max_concurrent, len(concurrent_days))
 
 
-def aggregate_metrics(sessions, stats, outcomes,
+def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
                       custom_skill_count: int = 0,
                       claude_md_sessions: int = 0) -> AggregateMetrics:
     # sessions: list[ParsedSession]; stats: list[SessionStats]; outcomes: list[OutcomeStats]
-    # 三个列表一一对应(同序、等长)。
+    # 三个列表一一对应(同序、等长)。repo_outcomes: {仓库根: RepoOutcome}——git 主锚
+    # 由 cli 按窗口采集后传入，None=未采集（如旧调用路径）按零计。
     session_count = len(sessions)
     human_input_count = sum(st.turn_count for st in stats)
     short_turn_count = sum(st.short_turn_count for st in stats)
@@ -179,6 +180,8 @@ def aggregate_metrics(sessions, stats, outcomes,
     commit_count = sum(o.commit_count for o in outcomes)
     landed_count = sum(o.landed_count for o in outcomes)
     edit_count = sum(o.edit_count for o in outcomes)
+    git_landed_count = sum(r.landed_count for r in (repo_outcomes or {}).values())
+    git_outside_count = sum(r.outside_count for r in (repo_outcomes or {}).values())
 
     durations = [st.duration_seconds for st in stats
                  if st.duration_seconds is not None
@@ -195,12 +198,30 @@ def aggregate_metrics(sessions, stats, outcomes,
         entry["edits"] += o.edit_count
 
     anchor_counts = {"override": 0, "error": 0, "code": 0, "link": 0}
+    per_sess_err: list[int] = []
+    per_sess_ovr: list[int] = []
     for s in sessions:
+        err = ovr = 0
         for turn in s.user_turns:
             hits = anchors(turn.text)
             for key in anchor_counts:
                 if hits[key]:
                     anchor_counts[key] += 1
+            err += hits["error"]
+            ovr += hits["override"]
+        per_sess_err.append(err)
+        per_sess_ovr.append(ovr)
+
+    # 摩擦集中度：全局计数看不出「集中于少数会话」，教练专家又被禁止从均值推
+    # 分布——这里给确定性的会话级分布摘要（命中会话数 + 单会话 top3 + 轮次 top3），
+    # 纯数字不带会话 id / 路径，零脱敏面。
+    friction_stats = {
+        "error_session_count": sum(1 for x in per_sess_err if x),
+        "error_top_counts": sorted((x for x in per_sess_err if x), reverse=True)[:3],
+        "override_session_count": sum(1 for x in per_sess_ovr if x),
+        "override_top_counts": sorted((x for x in per_sess_ovr if x), reverse=True)[:3],
+        "top_session_turns": sorted((st.turn_count for st in stats), reverse=True)[:3],
+    }
 
     token_usage: dict = {}
     for s in sessions:
@@ -236,32 +257,35 @@ def aggregate_metrics(sessions, stats, outcomes,
         session_count=session_count,
         human_input_count=human_input_count,
         active_days=active_days,
+        avg_turns=avg_turns,
+        tool_breadth=tool_breadth,
+        tool_session_counts=tool_session_counts,
         subagent_sessions=subagent_sessions,
         workflow_sessions=workflow_sessions,
         mcp_sessions=mcp_sessions,
+        model_counts=model_counts,
         commit_count=commit_count,
         landed_count=landed_count,
         edit_count=edit_count,
-        short_turn_count=short_turn_count,
-        option_pick_count=option_pick_count,
-        decision_point_count=decision_point_count,
-        plan_mode_sessions=plan_mode_sessions,
-        plan_mode_count=plan_mode_count,
-        concurrent_days=concurrent_days,
-        claude_md_sessions=claude_md_sessions,
-        tool_breadth=tool_breadth,
-        max_concurrent_sessions=max_concurrent_sessions,
-        tool_session_counts=tool_session_counts,
-        model_counts=model_counts,
+        duration_median_min=duration_median_min,
         project_breakdown=project_breakdown,
         anchor_counts=anchor_counts,
         token_usage=token_usage,
-        skill_counts=skill_counts,
-        mcp_server_counts=mcp_server_counts,
-        avg_turns=avg_turns,
-        duration_median_min=duration_median_min,
         token_total=token_total,
         trend=compute_trend(sessions, stats, outcomes),
+        short_turn_count=short_turn_count,
+        option_pick_count=option_pick_count,
+        decision_point_count=decision_point_count,
+        git_landed_count=git_landed_count,
+        git_outside_count=git_outside_count,
+        friction_stats=friction_stats,
+        plan_mode_sessions=plan_mode_sessions,
+        plan_mode_count=plan_mode_count,
+        skill_counts=skill_counts,
+        mcp_server_counts=mcp_server_counts,
         daily=daily,
+        max_concurrent_sessions=max_concurrent_sessions,
+        concurrent_days=concurrent_days,
         custom_skill_count=custom_skill_count,
+        claude_md_sessions=claude_md_sessions,
     )

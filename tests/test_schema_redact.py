@@ -3,8 +3,7 @@ from ai_coding_insights.profile_schema import validate_profile
 
 
 def _ok():
-    return {"l4_share": 0.4,
-            "breadth": {"summary": "广度高", "tools": ["Bash"]},
+    return {"breadth": {"summary": "广度高", "tools": ["Bash"]},
             "depth": {"summary": "多轮打磨"},
             "outcome": {"summary": "落地多", "landed": 18, "total": 23},
             "evidence": [{"pointer": "file#u1", "behavior": "纠正了一处实现方案"}]}
@@ -49,8 +48,7 @@ def test_load_config_business_terms_defaults_empty(tmp_path):
 
 def _ok_v5():
     """结构化合法 profile：depth 含 headline+points+metrics，顶层含合法 frictions。"""
-    return {"l4_share": 0.4,
-            "breadth": {"headline": "工具面铺得开",
+    return {"breadth": {"headline": "工具面铺得开",
                         "points": ["覆盖多类工具", "切换自如"],
                         "metrics": [{"label": "工具数", "value": "7"}],
                         "tools": ["Bash"]},
@@ -63,6 +61,7 @@ def _ok_v5():
                         "landed": 18, "total": 23},
             "evidence": [{"pointer": "file#u1", "behavior": "纠正了一处实现方案"}],
             "frictions": [{"observation": "上下文偶尔丢失",
+                           "pointers": [],
                            "suggestion": "拆小任务分批推进"}]}
 
 

@@ -2,8 +2,7 @@ from ai_coding_insights.profile_schema import validate_profile
 
 
 def _ok():
-    return {"l4_share": 0.2,
-            "breadth": {"summary": "广度高", "tools": ["Bash"]},
+    return {"breadth": {"summary": "广度高", "tools": ["Bash"]},
             "depth": {"summary": "多轮打磨"},
             "outcome": {"summary": "落地多", "landed": 18, "total": 23},
             "evidence": [{"pointer": "file#u1", "behavior": "纠正了一处实现方案"}]}
@@ -13,22 +12,23 @@ def test_valid_profile_passes():
     assert validate_profile(_ok()) == []
 
 
-def test_l4_share_required_and_bounded():
-    assert validate_profile(_ok()) == []      # fixture 已切到 l4_share
+def test_l4_share_deprecated():
+    p = _ok(); p["l4_share"] = 0.4
+    assert any("l4_share 已废弃" in e for e in validate_profile(p))
 
-    p2 = _ok(); del p2["l4_share"]
-    assert any("l4_share" in e for e in validate_profile(p2))
 
-    p3 = _ok(); p3["l4_share"] = 1.2
-    assert any("0-1" in e for e in validate_profile(p3))
+def test_posture_fields_absent_is_valid():
+    assert validate_profile(_ok()) == []      # 画像不含任何姿势字段即合法
 
-    p4 = _ok(); p4["l4_share"] = True         # bool 不是合法数字
-    assert any("l4_share" in e for e in validate_profile(p4))
 
-    p5 = _ok(); p5["l4_share"] = 0
-    assert validate_profile(p5) == []         # 边界 0 含
-    p6 = _ok(); p6["l4_share"] = 1
-    assert validate_profile(p6) == []         # 边界 1 含
+def test_frictions_require_pointers_key():
+    p = _ok()
+    p["frictions"] = [{"observation": "o", "suggestion": "s"}]      # 缺 pointers
+    assert any("pointers" in e for e in validate_profile(p))
+    p["frictions"] = [{"observation": "o", "suggestion": "s", "pointers": []}]
+    assert validate_profile(p) == []                                 # 空列表合法
+    p["frictions"] = [{"observation": "o", "suggestion": "s", "pointers": [1]}]
+    assert any("pointers" in e for e in validate_profile(p))         # 非字符串项
 
 
 def test_posture_distribution_deprecated():

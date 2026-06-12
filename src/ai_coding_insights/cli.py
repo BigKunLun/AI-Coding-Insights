@@ -6,12 +6,14 @@ from .window import decide_window
 from .discovery import discover_sessions, detect_data_start, is_window_truncated
 from .signals import compute_stats, aggregate_metrics
 from .outcome import compute_outcome
+from .git_outcome import repo_outcome, repo_root
+from .timeutil import parse_timestamp
 from .profile_input import build_session_input
 from .batch import make_batches
 from .customization import scan_custom_skills, detect_hook_config, compute_customization_signals
 from .snapshot import save_snapshot, load_latest, diff_metrics, DEFAULT_SNAPSHOT_DIR, _CORE_KEYS
 from .profile_schema import validate_profile
-from .obs_check import check_obs_coverage
+from .obs_check import check_obs_coverage, check_posture_counts, sum_posture_counts
 from .evidence_check import extract_turn_uuids, flag_missing_pointers
 from .run_model import detect_run_model
 from .stage import assemble_posture
@@ -44,8 +46,9 @@ def _make_pointer_checker():
 
 
 def _metrics_dict(metrics) -> dict:
-    # AggregateMetrics 的 landed_ratio 是 property，vars() 不含它，手动补。
-    return {**vars(metrics), "landed_ratio": metrics.landed_ratio}
+    # AggregateMetrics 的 property（landed_ratio/dropped_count）vars() 不含，手动补。
+    return {**vars(metrics), "landed_ratio": metrics.landed_ratio,
+            "dropped_count": metrics.dropped_count}
 
 
 def _cmd_scan(args) -> int:
@@ -139,13 +142,28 @@ def _emit_batches(args, cfg, now, since) -> int:
     outcomes = [compute_outcome(s) for s in sessions]
     sessions_input = [build_session_input(se, st, oc)
                       for se, st, oc in zip(sessions, stats, outcomes)]
+    # git 主锚采集：按仓库根归并会话时间窗（同仓多 cwd 防双计），窗口起点对齐取数窗口。
+    since_dt = (datetime.combine(since_date, datetime.min.time(), tzinfo=timezone.utc)
+                if since_date else now - timedelta(days=days))
+    roots: dict = {}
+    spans_by_root: dict = {}
+    for s in sessions:
+        a, b = parse_timestamp(s.first_ts), parse_timestamp(s.last_ts)
+        if not (a and b):
+            continue
+        if s.cwd not in roots:
+            roots[s.cwd] = repo_root(s.cwd)
+        if roots[s.cwd]:
+            spans_by_root.setdefault(roots[s.cwd], []).append((a, b))
+    repo_outcomes = {root: repo_outcome(root, spans, since_dt)
+                     for root, spans in spans_by_root.items()}
 
     # -- customization 信号扫描 --
     custom_skills = scan_custom_skills()
     custom_skill_count = len(custom_skills)
     # CLAUDE.md：检查各项目 cwd 下的 CLAUDE.md 在窗口内是否被修改
     claude_md_sessions = 0
-    cutoff_mtime = since or (now - timedelta(days=days))
+    cutoff_mtime = since_dt
     seen_cwd = set()
     for s in sessions:
         if s.cwd in seen_cwd:
@@ -160,7 +178,7 @@ def _emit_batches(args, cfg, now, since) -> int:
             except OSError:
                 pass
 
-    metrics = aggregate_metrics(sessions, stats, outcomes,
+    metrics = aggregate_metrics(sessions, stats, outcomes, repo_outcomes=repo_outcomes,
                                  custom_skill_count=custom_skill_count,
                                  claude_md_sessions=claude_md_sessions)
     # 定制化信号聚合（供报告能力盲区使用）
@@ -201,23 +219,36 @@ def _emit_batches(args, cfg, now, since) -> int:
 
 def _cmd_verify_obs(args) -> int:
     batch_sessions = {}
+    batch_turn_counts: dict[str, int] = {}
+    sid_to_batch: dict[str, str] = {}
     for f in sorted(Path(args.batches).glob("batch-*.json")):
         batch = json.loads(f.read_text(encoding="utf-8"))
         batch_sessions[str(f)] = [s["session_id"] for s in batch]
+        for s in batch:
+            batch_turn_counts[s["session_id"]] = len(s.get("turns") or [])
+            sid_to_batch[s["session_id"]] = str(f)
 
     obs_ids: set[str] = set()
+    obs_sessions: list = []
     unreadable = []
     import glob as _glob
     for fp in sorted(_glob.glob(args.obs_glob)):
         try:
             obs = json.loads(Path(fp).read_text(encoding="utf-8"))
-            obs_ids.update(s["session_id"] for s in obs["sessions"])
+            for s in obs["sessions"]:
+                obs_ids.add(s["session_id"])
+                obs_sessions.append(s)
         except (json.JSONDecodeError, KeyError, TypeError):
             unreadable.append(fp)
 
     result = check_obs_coverage(batch_sessions, obs_ids)
+    # 姿势计数完整性（v2 口径地基）：缺/坏 posture_counts 按 batch 文件归类，
+    # 编排端据 file 字段只补派受影响的批
+    problems = check_posture_counts(batch_turn_counts, obs_sessions)
+    result["posture_invalid"] = [{**p, "file": sid_to_batch.get(p["session_id"], "")}
+                                 for p in problems]
     result["unreadable"] = unreadable
-    if unreadable:
+    if unreadable or result["posture_invalid"]:
         result["status"] = "mismatch"
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result["status"] == "ok" else 1
@@ -245,13 +276,25 @@ def _cmd_render_profile(args) -> int:
     metrics = None
     if args.metrics:
         metrics = json.loads(Path(args.metrics).read_text(encoding="utf-8"))
-    # L1/L2 硬信号锚定：四档分布由规则层组装（profile 只带 l4_share），
-    # 注入 profile 后下游（03 板块/雷达/stage 判档/快照）消费同一份组装结果。
+    # 四档分布（v2 口径）：读全部 obs 聚合 extractor 的逐 turn 语义分档计数
+    # （语义判定收在看得见原文的阶段一），AskUserQuestion 答题按协议硬信号
+    # 并入 L2，算术组装收在规则层。obs 缺失/不可读不阻断渲染，但必须 stderr
+    # 出声并按全零分布降级（探索期兜底），不得静默装作有数。
+    obs_sessions: list = []
+    if getattr(args, "obs_glob", None):
+        import glob as _glob
+        for fp in sorted(_glob.glob(args.obs_glob)):
+            try:
+                obs = json.loads(Path(fp).read_text(encoding="utf-8"))
+                obs_sessions.extend(obs["sessions"])
+            except (json.JSONDecodeError, KeyError, TypeError, OSError):
+                print(f"警告：obs 不可读，姿势分布按缺失计：{fp}", file=sys.stderr)
+    if not obs_sessions:
+        print("警告：未读到任何 obs（--obs-glob 缺省或无命中），姿势分布按全零渲染",
+              file=sys.stderr)
     mm = metrics or {}
-    assembled = assemble_posture(mm.get("decision_point_count", 0),
-                                 mm.get("short_turn_count", 0),
-                                 mm.get("option_pick_count", 0),
-                                 profile.get("l4_share", 0))
+    assembled = assemble_posture(sum_posture_counts(obs_sessions),
+                                 mm.get("option_pick_count", 0))
     profile["posture_distribution"] = assembled
     snap_dir = Path(args.snapshot_dir)
     prev = load_latest(dir=snap_dir)
@@ -409,7 +452,9 @@ def _cmd_auto_scan(args) -> int:
                 except OSError:
                     pass
 
+        # auto_scan 不做昂贵的 git log，repo_outcomes 按空字典
         metrics = aggregate_metrics(sessions, stats, outcomes,
+                                     repo_outcomes={},
                                      custom_skill_count=custom_skill_count,
                                      claude_md_sessions=claude_md_sessions)
         metrics_dict = _metrics_dict(metrics)
@@ -423,12 +468,11 @@ def _cmd_auto_scan(args) -> int:
         out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / f"aci-auto-{today_str}.html"
 
-        # 组装 posture_distribution（auto-scan 无 LLM 判定，L4 取中性值）
-        posture = assemble_posture(metrics_dict.get("decision_point_count", 0),
-                                   metrics_dict.get("short_turn_count", 0),
-                                   metrics_dict.get("option_pick_count", 0),
-                                   0.5)
-        profile = {"l4_share": 0.5, "posture_distribution": posture}
+        # 姿势分布（v2 口径）：auto_scan 无 LLM 语义判定，姿势计数按全零；
+        # assemble_posture 基于 option_pick_count 做算术组装（AskUserQuestion 答题并入 L2）。
+        posture = assemble_posture({"L1": 0, "L2": 0, "L3": 0, "L4": 0},
+                                   metrics_dict.get("option_pick_count", 0))
+        profile = {"posture_distribution": posture}
         meta = {
             "generated_at": now.isoformat(),
             "session_count": len(sessions),
@@ -447,7 +491,6 @@ def _cmd_auto_scan(args) -> int:
                        "truncated": False, "mode": cfg.mode},
                       dir=Path(args.snapshot_dir))
     except Exception:
-        import sys
         print(f"auto-scan 执行失败，跳过本次自动评估", file=sys.stderr)
         return 0  # 异常静默退出（不打扰用户主流程）
 
@@ -490,6 +533,7 @@ def main(argv=None) -> int:
     rp.add_argument("--window", default=None)
     rp.add_argument("--run-started", default=None)   # ISO 8601，编排启动时刻
     rp.add_argument("--run-agents", type=int, default=None)
+    rp.add_argument("--obs-glob", default=None)   # obs-*.json glob；四档分布的计数来源
     au = sub.add_parser("auto-scan")
     au.add_argument("--out-dir", required=True)
     au.add_argument("--config", default=None)

@@ -57,7 +57,9 @@ def test_aggregate_basic_counts():
     assert m.commit_count == 7
     assert m.landed_count == 3
     assert m.edit_count == 13
-    assert m.landed_ratio == 3 / 7
+    # git 主锚口径：未传 repo_outcomes → git 落地 0，丢弃 7-3=4 → 0/(0+4)
+    assert m.dropped_count == 4
+    assert m.landed_ratio == 0.0
 
 
 def test_aggregate_tools_models_subagent():
@@ -186,3 +188,42 @@ def test_aggregate_includes_trend():
                           [_oc(early), _oc(late)])
     assert m.trend is not None
     assert m.trend["first_half"]["sessions"] == 1
+
+
+def test_aggregate_metrics_repo_outcomes():
+    from ai_coding_insights.models import RepoOutcome
+    m = aggregate_metrics([], [], [], repo_outcomes={
+        "/r1": RepoOutcome(landed_count=3, outside_count=1),
+        "/r2": RepoOutcome(landed_count=2, outside_count=0)})
+    assert m.git_landed_count == 5
+    assert m.git_outside_count == 1
+
+
+def test_aggregate_metrics_repo_outcomes_default_zero():
+    m = aggregate_metrics([], [], [])
+    assert m.git_landed_count == 0 and m.git_outside_count == 0
+
+
+def test_aggregate_friction_stats_concentration():
+    # 摩擦集中度：error/override 集中在 s1，s2 干净；轮次 top 供「长拉锯」判据
+    s1 = _session("s1", "/r", ["Bash"], ["m"], "2026-06-01T10:00:00Z",
+                  ["还是报错 Traceback", "又报错", "不对，改成异步"])
+    s2 = _session("s2", "/r", ["Bash"], ["m"], "2026-06-01T11:00:00Z", ["跑下测试"])
+    stats = [SessionStats("s1", "/r", 3, 0.0, 100.0, [], []),
+             SessionStats("s2", "/r", 1, 0.0, 100.0, [], [])]
+    outcomes = [OutcomeStats("s1", "/r", 0, 0, 0), OutcomeStats("s2", "/r", 0, 0, 0)]
+    m = aggregate_metrics([s1, s2], stats, outcomes)
+    fs = m.friction_stats
+    assert fs["error_session_count"] == 1
+    assert fs["error_top_counts"] == [2]
+    assert fs["override_session_count"] == 1
+    assert fs["override_top_counts"] == [1]
+    assert fs["top_session_turns"] == [3, 1]
+
+
+def test_aggregate_friction_stats_empty():
+    m = aggregate_metrics([], [], [])
+    assert m.friction_stats == {
+        "error_session_count": 0, "error_top_counts": [],
+        "override_session_count": 0, "override_top_counts": [],
+        "top_session_turns": []}

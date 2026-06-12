@@ -2,15 +2,20 @@
 
 定位约束：这是给本人看的成长定位，不是考核分数。判定规则随结果一起返回
 （criteria/gaps），渲染层必须原样展示，让人知道「为什么在这、怎么往上」。
-posture 分布由规则层组装（L1/L2 硬信号，L3/L4 分界来自 LLM 的 l4_share，
-见 assemble_posture），tool_breadth/landed_ratio 来自硬指标——本判定含
+posture 分布由阶段一 extractor 逐 turn 语义分档计数、规则层聚合组装
+（见 assemble_posture；AskUserQuestion 答题为协议硬信号计入 L2），
+tool_breadth/landed_ratio 来自硬指标——本判定含
 LLM 软信号成分，仍属软信号初筛，不得用于奖惩。
+landed_ratio 自 2026-06-12 起为 git 主锚口径：git 落地/（落地+观测丢弃），
+见 models.AggregateMetrics.landed_ratio；transcript 不可观测环境不再恒 0。
 
-阈值依据（2026-06-11 调研，docs/调研-AI驾驭力分级业界基准-*.md）：业界没有
-「个体 AI 驾驭水平」的可计算分档基准（主流框架全是组织级或定性自评），阈值
-无外部分位可抄。首版按「引领期=窄口筛头部」设定——真实人群中高主导行为
-自然占比仅 8-16%（Anthropic Economic/Fluency Index）。待攒 2-3 个月度真实
-分布后按本机人群分位重定四档。
+阈值依据（v2 口径，2026-06-12 重校初设）：v1 口径把全部非短非选项输入默认为
+L3+L4，35/55/70% 是按该虚高分布定的。v2 逐 turn 语义分档后，放行/选择被
+LLM 归位到 L1/L2，L3+L4 为真实语义占比——按业界锚点（Anthropic Economic/
+Fluency Index：真实人群低主导交互约 80%，高主导行为人群占比 8-16%）将各档
+阈值约折半初设（引领期仍取「窄口筛头部」）。这是无本机分布数据时的折算值，
+待攒 2-3 个月度 v2 真实分布后按本机人群分位重定（快照已带 posture_rubric=2
+口径标记，跨口径不可同比）。
 """
 
 # 阶段从高到低逐档匹配；每档: (序号, 名称, 条件列表[(描述, 值键, 谓词)])
@@ -18,17 +23,17 @@ LLM 软信号成分，仍属软信号初筛，不得用于奖惩。
 # 值键对应返回值 values 字典的键——渲染层据此取「实际值」，判据文案随便改不会断渲染
 _STAGES = [
     (4, "引领期", [
-        ("L4 主导占比 ≥ 35%",  "L4",           lambda l4, l34, tb, lr: l4 >= 0.35),
-        ("L3+L4 合计 ≥ 70%",   "L3+L4",        lambda l4, l34, tb, lr: l34 >= 0.70),
+        ("L4 主导占比 ≥ 15%",  "L4",           lambda l4, l34, tb, lr: l4 >= 0.15),
+        ("L3+L4 合计 ≥ 50%",   "L3+L4",        lambda l4, l34, tb, lr: l34 >= 0.50),
         ("工具广度 ≥ 15 种",    "tool_breadth", lambda l4, l34, tb, lr: tb >= 15),
-        ("提交落地率 ≥ 50%",    "landed_ratio", lambda l4, l34, tb, lr: lr >= 0.50),
+        ("提交落地率 ≥ 50%（git 口径）", "landed_ratio", lambda l4, l34, tb, lr: lr >= 0.50),
     ]),
     (3, "精通期", [
-        ("L3+L4 合计 ≥ 55%",   "L3+L4",        lambda l4, l34, tb, lr: l34 >= 0.55),
+        ("L3+L4 合计 ≥ 35%",   "L3+L4",        lambda l4, l34, tb, lr: l34 >= 0.35),
         ("工具广度 ≥ 10 种",    "tool_breadth", lambda l4, l34, tb, lr: tb >= 10),
     ]),
     (2, "进阶期", [
-        ("L3+L4 合计 ≥ 35%（开始主动引导）", "L3+L4", lambda l4, l34, tb, lr: l34 >= 0.35),
+        ("L3+L4 合计 ≥ 15%（开始主动引导）", "L3+L4", lambda l4, l34, tb, lr: l34 >= 0.15),
         ("工具广度 ≥ 6 种",     "tool_breadth", lambda l4, l34, tb, lr: tb >= 6),
     ]),
     (1, "探索期", []),               # 兜底
@@ -49,28 +54,31 @@ def normalize_posture(posture_distribution: dict) -> dict:
     return vals
 
 
-def assemble_posture(decision_point_count: int, short_turn_count: int,
-                     option_pick_count: int, l4_share) -> dict:
-    """硬信号 + LLM 分界 → L1-L4 分布（确定性组装，无 IO 纯函数）。
+def assemble_posture(llm_posture_counts: dict, option_pick_count) -> dict:
+    """LLM 逐 turn 语义分档计数 + 协议硬信号 → L1-L4 分布（确定性算术，无 IO 纯函数）。
 
-    分母 = 决策点（有效真人输入 + AskUserQuestion 已答题数）。
-    L1 = 极短输入占比、L2 = 选项回答占比——全硬算；剩余质量按 l4_share
-    （L4 在 L3+L4 中的份额，LLM 唯一输出）切成 L3/L4。
-    决策点为 0 → 全零分布（decide_stage 走探索期兜底）。
-    short ⊆ turns、picks 与 turns 不相交，数学上 L1+L2 ≤ 1；仍防御钳位。
+    v2 口径（2026-06-12）：四档分界是语义问题，由看得见原文的阶段一 extractor
+    逐条判档并按会话输出 posture_counts（verify-obs 已闸「每会话四档总和 ==
+    输入条数」），本函数只做算术。AskUserQuestion 已答题数是协议级硬信号
+    （L2「选择」的机械事实），直接并入 L2，不经 LLM。
+    分母 = 计数总和 + 答题数（与决策点数学等价，自洽分母消灭两侧错位）；
+    为 0 → 全零分布（decide_stage 走探索期兜底）。非法值按 0 计，防御不抛错。
     """
-    dp = int(decision_point_count or 0)
+    pc = llm_posture_counts or {}
+
+    def _n(key):
+        v = pc.get(key)
+        return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else 0
+
+    l1, l2, l3, l4 = _n("L1"), _n("L2"), _n("L3"), _n("L4")
+    try:
+        picks = max(0, int(option_pick_count or 0))
+    except (TypeError, ValueError):
+        picks = 0
+    dp = l1 + l2 + l3 + l4 + picks
     if dp <= 0:
         return {"L1": 0.0, "L2": 0.0, "L3": 0.0, "L4": 0.0}
-    l1 = max(0.0, min(1.0, (short_turn_count or 0) / dp))
-    l2 = max(0.0, min(1.0, (option_pick_count or 0) / dp))
-    rest = max(0.0, 1.0 - l1 - l2)
-    try:
-        share = max(0.0, min(1.0, float(l4_share or 0)))
-    except (TypeError, ValueError):
-        share = 0.0
-    l4 = round(rest * share, 10)
-    return {"L1": l1, "L2": l2, "L3": round(rest - l4, 10), "L4": l4}
+    return {"L1": l1 / dp, "L2": (l2 + picks) / dp, "L3": l3 / dp, "L4": l4 / dp}
 
 
 def decide_stage(posture_distribution: dict, tool_breadth: int, landed_ratio: float) -> dict:
