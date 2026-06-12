@@ -14,6 +14,9 @@ CURRENT = {
     "workflow_sessions": 3,
     "mcp_sessions": 5,
     "duration_median_min": 42.0,
+    "plan_mode_sessions": 8,
+    "max_concurrent_sessions": 3,
+    "plan_mode_count": 15,
 }
 PREVIOUS = {
     "landed_ratio": 0.75,
@@ -29,6 +32,9 @@ PREVIOUS = {
     "workflow_sessions": 3,   # 相等 → "→"
     "mcp_sessions": 6,        # 下降 → "↓"
     "duration_median_min": 40.0,
+    "plan_mode_sessions": 5,
+    "max_concurrent_sessions": 2,
+    "plan_mode_count": 10,
 }
 
 

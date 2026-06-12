@@ -60,6 +60,9 @@ def parse_session(path) -> ParsedSession:
     token_usage: dict = {}
     ask_ids: set = set()            # 待配对的 AskUserQuestion tool_use id
     option_pick_count = 0
+    plan_mode_count = 0
+    skill_names: list = []
+    mcp_servers: set = set()        # 用 set 收集，最后转 sorted list
     seen_sha = set()
     session_id = cwd = git_branch = first_ts = last_ts = None
     # 必须逐行迭代文件句柄而非 splitlines()：jsonl 仅以 \n 分隔，但 splitlines()
@@ -102,9 +105,25 @@ def parse_session(path) -> ParsedSession:
                     bucket["cache_creation"] += usage.get("cache_creation_input_tokens") or 0
                 for b in msg.get("content") or []:
                     if isinstance(b, dict) and b.get("type") == "tool_use":
-                        tools.append(b.get("name", ""))
-                        if b.get("name") == "AskUserQuestion" and b.get("id"):
+                        name = b.get("name", "")
+                        tools.append(name)
+                        if name == "AskUserQuestion" and b.get("id"):
                             ask_ids.add(b["id"])
+                        # plan_mode：EnterPlanMode / ExitPlanMode tool_use
+                        if name in ("EnterPlanMode", "ExitPlanMode"):
+                            plan_mode_count += 1
+                        # skill_names：从 Skill tool_use.input.skill 提取
+                        if name == "Skill":
+                            inp = b.get("input")
+                            skill = (inp.get("skill") if isinstance(inp, dict) else None)
+                            if isinstance(skill, str) and skill:
+                                skill_names.append(skill)
+                        # mcp_servers：从 mcp__<server>__<tool> 解析 server 名
+                        # 防御：parts[1] 非空才加入（防畸形工具名如 "mcp__"）
+                        if name.startswith("mcp__"):
+                            parts = name.split("__", 2)
+                            if len(parts) >= 2 and parts[1]:
+                                mcp_servers.add(parts[1])
             # AskUserQuestion 选项回答：tool_result 按 id 配对 + 顶层 toolUseResult
             # 含 answers dict（拒绝时是字符串回执，天然排除）。每答一题计 1 个决策点。
             if line.get("type") == "user" and ask_ids:
@@ -137,4 +156,7 @@ def parse_session(path) -> ParsedSession:
         tools_used=sorted(set(tools)), models_used=sorted(set(models)),
         first_ts=first_ts, last_ts=last_ts,
         commits=commits, edit_count=edit_count, token_usage=token_usage,
-        option_pick_count=option_pick_count)
+        option_pick_count=option_pick_count,
+        plan_mode_count=plan_mode_count,
+        skill_names=sorted(set(skill_names)),
+        mcp_servers=sorted(mcp_servers))

@@ -20,11 +20,34 @@ _CAPABILITIES = [
      "多步任务让 AI 维护进度清单，长会话不丢步骤"),
     ("Web 取证", lambda ts: "WebSearch" in ts or "WebFetch" in ts,
      "涉及库版本/外部事实时让 AI 实时检索，而非依赖训练记忆"),
+    ("自建 Skill", lambda ts, cs=None: bool(cs and cs.get("has_custom_skills")),
+     "把重复性工作封装成自己的可复用 skill，从消费者进阶为流程产品化者"),
+    ("CLAUDE.md 定制", lambda ts, cs=None: bool(cs and cs.get("claude_md_sessions", 0) > 0),
+     "通过 CLAUDE.md 持久化项目约定与个人偏好，减少每次重复交代"),
+    ("Hook 自动化", lambda ts, cs=None: bool(cs and cs.get("has_hooks")),
+     "用 hooks 在会话生命周期（Start/End）自动触发质检、提交或格式化"),
 ]
 
 
-def unused_capabilities(tool_session_counts: dict) -> list[dict]:
-    """返回 [{"label", "scene"}...]，全部用过则空列表。"""
+def unused_capabilities(tool_session_counts: dict,
+                         customization_signals: dict | None = None) -> list[dict]:
+    """返回 [{"label", "scene"}...]，全部用过则空列表。
+
+    customization_signals 可选，来自 compute_customization_signals()；
+    提供后，自建 Skill / CLAUDE.md / Hook 三项可被检测。
+    未提供时这三项不进入盲区（无法判定，不报假阳性）。
+    """
     tools = set(tool_session_counts or {})
-    return [{"label": label, "scene": scene}
-            for label, used, scene in _CAPABILITIES if not used(tools)]
+    # 需要 customization_signals 才能判定的能力（无此数据时跳过，不报假阳性）
+    _NEEDS_CS = {"自建 Skill", "CLAUDE.md 定制", "Hook 自动化"}
+    result = []
+    for label, used, scene in _CAPABILITIES:
+        if label in _NEEDS_CS and customization_signals is None:
+            continue
+        try:
+            is_used = used(tools, customization_signals)
+        except TypeError:
+            is_used = used(tools)
+        if not is_used:
+            result.append({"label": label, "scene": scene})
+    return result

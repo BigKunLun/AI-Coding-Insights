@@ -21,6 +21,9 @@ def build_session_input(session: ParsedSession, stats: SessionStats, outcome: Ou
             "commit_count": outcome.commit_count,
             "landed_count": outcome.landed_count,
             "edit_count": outcome.edit_count,
+            "plan_mode_count": session.plan_mode_count,
+            "skill_names": session.skill_names,
+            "mcp_servers": session.mcp_servers,
         },
         "turns": turns,
     }

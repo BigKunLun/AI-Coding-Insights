@@ -7,7 +7,8 @@ DEFAULT_SNAPSHOT_DIR = Path.home() / ".ai-coding-insights" / "snapshots"
 _CORE_KEYS = ["landed_ratio", "commit_count", "landed_count", "edit_count",
               "session_count", "human_input_count", "tool_breadth", "active_days",
               "token_total", "subagent_sessions", "workflow_sessions", "mcp_sessions",
-              "duration_median_min"]
+              "duration_median_min",
+              "plan_mode_sessions", "max_concurrent_sessions", "plan_mode_count"]
 
 _DATE_STEM = re.compile(r"^\d{4}-\d{2}-\d{2}$")  # 快照文件名仅认 YYYY-MM-DD，杂散 json 不参与排序
 

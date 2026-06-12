@@ -164,6 +164,153 @@ def _render_trend_section(trend: dict | None, idx: int) -> str:
     )
 
 
+def _render_daily_heatmap(daily: list | None, idx: int) -> str:
+    """活动热力图：CSS Grid 7 列（周一到周日），颜色深度按 session_count 分 4 档。"""
+    if not daily:
+        return ""
+    # 构建日期→数据映射
+    from datetime import date as date_type, timedelta
+    data_map = {}
+    for d in daily:
+        data_map[d["date"]] = d["session_count"]
+
+    if not data_map:
+        return ""
+
+    dates = sorted(data_map)
+    first = date_type.fromisoformat(dates[0])
+    last = date_type.fromisoformat(dates[-1])
+
+    # 从 first 所在的周一开始，到 last 所在的周日结束
+    start = first - timedelta(days=first.weekday())
+    end = last - timedelta(days=last.weekday()) + timedelta(days=6)
+
+    cells = ""
+    cur = start
+    month_labels = []
+    week = []
+    weeks = []
+    while cur <= end:
+        iso = cur.isoformat()
+        val = data_map.get(iso, 0)
+        if val == 0:
+            level, color = 0, "#e8ebf0"
+        elif val == 1:
+            level, color = 1, "#a5d6f9"
+        elif val <= 3:
+            level, color = 2, "#4f9ed4"
+        else:
+            level, color = 3, "#1a5f8a"
+        title = f"{iso}：{val} 会话" if val else iso
+        cells += f'<div class="h-cell h-lv{level}" style="background:{color}" title="{title}"></div>'
+        # 月份标签：每月第一天，记录周内列位置（1-7）
+        if cur.day == 1 or cur == start:
+            month_labels.append((len(week) + 1, cur.strftime("%m月")))
+        week.append(cur)
+        if cur.weekday() == 6:
+            weeks.append(week)
+            week = []
+        cur += timedelta(days=1)
+    if week:
+        weeks.append(week)
+
+    # 星期表头
+    day_names = ["一", "二", "三", "四", "五", "六", "日"]
+    header = "".join(f"<div class='h-dow'>{d}</div>" for d in day_names)
+
+    # 月份标注行
+    month_row = ""
+    for pos, label in month_labels:
+        month_row += f"<div class='h-mo' style='grid-column:{pos}'>{label}</div>"
+
+    # 行数
+    n_rows = len(weeks)
+
+    return (
+        _sec_header(idx, "活动热力")
+        + '<div class="card">'
+        + f'<div class="heatmap" style="--h-cols:7;--h-rows:{n_rows};--h-row-start:2">'
+        + f'<div class="h-mo-row">{month_row}</div>'
+        + f'<div class="h-dow-row">{header}</div>'
+        + f'<div class="h-grid">{cells}</div>'
+        + '<div class="h-legend">'
+        + '<span class="h-leg-swatch" style="background:#e8ebf0"></span> 0'
+        + '<span class="h-leg-swatch" style="background:#a5d6f9"></span> 1'
+        + '<span class="h-leg-swatch" style="background:#4f9ed4"></span> 2–3'
+        + '<span class="h-leg-swatch" style="background:#1a5f8a"></span> 4+ 会话/日'
+        + '</div></div></div>'
+    )
+
+
+def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
+                                      skill_counts: dict | None,
+                                      mcp_server_counts: dict | None) -> str:
+    """工具/技能/MCP 分布附录（默认折叠）。三组降序条形图。"""
+    if not tool_session_counts and not skill_counts and not mcp_server_counts:
+        return ""
+
+    def _bar_items(counts: dict, top_n: int = 15) -> tuple[list, float]:
+        if not counts:
+            return [], 0.0
+        items = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        mx = items[0][1] if items else 1
+        return items, float(mx)
+
+    sections = ""
+    # 高频工具 Top 15
+    if tool_session_counts:
+        items, mx = _bar_items(tool_session_counts)
+        bars = ""
+        for name, cnt in items:
+            w = (cnt / mx * 100.0) if mx else 0.0
+            bars += (
+                f'<div class="tok-row"><span class="tok-label" title="{escape(name)}">'
+                f'{escape(name)}</span><span class="tok-bar-wrap">'
+                f'<span class="tok-bar" style="width:{w:.1f}%"></span>'
+                f'<span class="tok-val">{cnt}</span></span></div>'
+            )
+        sections += (
+            '<details class="tok-block"><summary><b>高频工具 Top 15</b></summary>'
+            f'<div class="tok-chart">{bars}</div></details>'
+        )
+
+    # 技能频次
+    if skill_counts:
+        items, mx = _bar_items(skill_counts)
+        bars = ""
+        for name, cnt in items:
+            w = (cnt / mx * 100.0) if mx else 0.0
+            bars += (
+                f'<div class="tok-row"><span class="tok-label" title="{escape(name)}">'
+                f'{escape(name)}</span><span class="tok-bar-wrap">'
+                f'<span class="tok-bar" style="width:{w:.1f}%"></span>'
+                f'<span class="tok-val">{cnt}</span></span></div>'
+            )
+        sections += (
+            '<details class="tok-block"><summary><b>技能频次</b></summary>'
+            f'<div class="tok-chart">{bars}</div></details>'
+        )
+
+    # MCP Server 频次
+    if mcp_server_counts:
+        items, mx = _bar_items(mcp_server_counts)
+        bars = ""
+        for name, cnt in items:
+            w = (cnt / mx * 100.0) if mx else 0.0
+            bars += (
+                f'<div class="tok-row"><span class="tok-label" title="{escape(name)}">'
+                f'{escape(name)}</span><span class="tok-bar-wrap">'
+                f'<span class="tok-bar" style="width:{w:.1f}%"></span>'
+                f'<span class="tok-val">{cnt}</span></span></div>'
+            )
+        sections += (
+            '<details class="tok-block"><summary><b>MCP Server 频次</b></summary>'
+            f'<div class="tok-chart">{bars}</div></details>'
+        )
+
+    return sections
+
+
 def _render_token_details(token_usage: dict | None, token_total) -> str:
     """附录 A：Token 消耗（默认展开）。条形为 HTML 网格，按各模型 output 最大值归一。"""
     if not token_usage:
@@ -252,9 +399,11 @@ def _render_highlights_section(highlights: list | None, projects: list, idx: int
             + f'<div class="card hl-card">{rows}</div>')
 
 
-def _render_capabilities_section(tool_session_counts: dict | None, idx: int) -> str:
+def _render_capabilities_section(tool_session_counts: dict | None, idx: int,
+                                  customization_signals: dict | None = None) -> str:
     """06 能力盲区；label/scene 为内置文案，仍统一 escape 求稳。"""
-    gaps_cap = unused_capabilities(tool_session_counts or {})
+    gaps_cap = unused_capabilities(tool_session_counts or {},
+                                    customization_signals=customization_signals)
     if not gaps_cap:
         inner = ('<div class="cap-row"><span class="tag tag-ok">已覆盖</span>'
                  '<span>高杠杆能力全部用过 ✓</span></div>')
@@ -500,15 +649,6 @@ def render_profile_report(profile: dict, meta: dict,
             return _fmt_delta(diff[key])
         return ""
 
-    def dur(v):
-        """时长中位数：None→「—」，有值→「N + min 单位」。"""
-        if v is None:
-            return "—"
-        try:
-            return f'{round(float(v))}<span class="unit">min</span>'
-        except (TypeError, ValueError):
-            return "—"
-
     # ---- 横幅四数 = 四维代表值 ----
     avg_turns = mval("avg_turns")
     hero_nums = [
@@ -526,8 +666,6 @@ def render_profile_report(profile: dict, meta: dict,
     # ---- 01 指标明细：三族，不重复横幅四数 ----
     edits_per_landed = ("—" if not (edit_count and landed_count)
                         else f"≈{round(float(edit_count) / float(landed_count))}")
-    token_usage = m.get("token_usage") or {}
-    model_switch = num(len(token_usage) if token_usage else None)
     families = [
         ("产出落地", "#0d9488", "#0f766e", [
             ("提交数", num(commit_count), diff_html("commit_count")),
@@ -540,13 +678,13 @@ def render_profile_report(profile: dict, meta: dict,
             ("SubAgent 会话", num(mval("subagent_sessions")), diff_html("subagent_sessions")),
             ("Workflow 会话", num(mval("workflow_sessions")), diff_html("workflow_sessions")),
             ("MCP 会话", num(mval("mcp_sessions")), diff_html("mcp_sessions")),
-            ("模型切换", model_switch, ""),
+            ("Plan Mode 会话", num(mval("plan_mode_sessions")), diff_html("plan_mode_sessions")),
         ]),
         ("节奏投入", "#7c3aed", "#6d28d9", [
             ("会话数", num(mval("session_count")), diff_html("session_count")),
             ("有效输入", num(mval("human_input_count")), diff_html("human_input_count")),
             ("活跃天数", num(mval("active_days")), diff_html("active_days")),
-            ("时长中位数", dur(mval("duration_median_min")), diff_html("duration_median_min")),
+            ("最大并发", num(mval("max_concurrent_sessions")), diff_html("max_concurrent_sessions")),
         ]),
     ]
     fam_html = ""
@@ -748,7 +886,13 @@ def render_profile_report(profile: dict, meta: dict,
         sections.append(_sec_header(idx, "摩擦 + 建议") + f'<div class="fr-list">{fr_items}</div>')
     if metrics is not None:
         idx += 1
-        sections.append(_render_capabilities_section(m.get("tool_session_counts"), idx))
+        sections.append(_render_capabilities_section(m.get("tool_session_counts"), idx,
+                                                      customization_signals=m.get("customization_signals")))
+    # 热力图（07 活动热力）——原趋势顺延为 08
+    heatmap_html = _render_daily_heatmap(m.get("daily"), idx + 1)
+    if heatmap_html:
+        idx += 1
+        sections.append(heatmap_html)
     trend_html = _render_trend_section(m.get("trend"), idx + 1)
     if trend_html:
         idx += 1
@@ -756,11 +900,13 @@ def render_profile_report(profile: dict, meta: dict,
 
     # ---- 附录（不编号）----
     token_block = _render_token_details(m.get("token_usage"), m.get("token_total"))
+    tsm_appendix = _render_tool_skill_mcp_appendix(
+        m.get("tool_session_counts"), m.get("skill_counts"), m.get("mcp_server_counts"))
     appendix = (
         '<div class="sec"><span class="sec-num" style="color:#7d8694">附录</span>'
         '<span class="sec-title">明细数据</span>'
         '<span class="sec-hint">默认折叠，点开查看</span></div>'
-        + token_block + evidence_block
+        + token_block + tsm_appendix + evidence_block
     )
 
     # ---- 页脚 ----
@@ -900,7 +1046,17 @@ b{{font-weight:700}}
 /* ---- 06 能力盲区 ---- */
 .cap-card{{padding:18px 22px;display:grid;gap:10px}}
 .cap-row{{display:flex;gap:12px;font-size:13.5px;color:#344054;line-height:1.7}}
-/* ---- 07 趋势 / 附录表格 ---- */
+/* ---- 07 活动热力 ---- */
+.heatmap{{display:grid;grid-template-rows:auto auto auto;gap:4px;margin-top:8px}}
+.h-mo-row{{display:grid;grid-template-columns:repeat(var(--h-cols),1fr);grid-column:2}}
+.h-mo{{font-size:11px;color:#7d8694;font-weight:600}}
+.h-dow-row{{display:flex;gap:4px;margin-top:2px;font-size:11px;color:#7d8694;font-weight:600}}
+.h-dow{{width:28px;text-align:center}}
+.h-grid{{display:grid;grid-template-columns:repeat(var(--h-cols),28px);gap:4px;margin-top:2px}}
+.h-cell{{width:28px;height:28px;border-radius:4px;cursor:help}}
+.h-legend{{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:11px;color:#7d8694}}
+.h-leg-swatch{{display:inline-block;width:14px;height:14px;border-radius:3px}}
+/* ---- 08 趋势 / 附录表格 ---- */
 .trend-card{{padding:8px 22px 16px}}
 table.trend{{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}}
 table.trend th{{padding:12px 8px 9px;text-align:left;font-size:12px;color:#7d8694;

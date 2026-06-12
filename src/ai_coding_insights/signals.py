@@ -1,5 +1,7 @@
 import re
 import statistics
+from collections import defaultdict
+from datetime import timedelta
 
 from .models import AggregateMetrics, OutcomeStats, ParsedSession, SessionStats
 from .timeutil import parse_timestamp
@@ -77,7 +79,72 @@ def compute_trend(sessions, stats, outcomes) -> dict | None:
     return {"first_half": _half(first), "second_half": _half(second)}
 
 
-def aggregate_metrics(sessions, stats, outcomes) -> AggregateMetrics:
+def _compute_daily(sessions, stats, outcomes) -> list[dict]:
+    """按 first_ts UTC 日期分组，汇总每日基础指标。
+
+    无时间戳的会话不参与；返回按日期升序的 dict 列表。
+    """
+    buckets: dict = defaultdict(lambda: {"session_count": 0, "human_input_count": 0,
+                                          "commit_count": 0, "landed_count": 0,
+                                          "edit_count": 0, "token_total": 0})
+    for s, st, oc in zip(sessions, stats, outcomes):
+        ts = parse_timestamp(s.first_ts)
+        if ts is None:
+            continue
+        d = ts.date()
+        b = buckets[d]
+        b["session_count"] += 1
+        b["human_input_count"] += st.turn_count
+        b["commit_count"] += oc.commit_count
+        b["landed_count"] += oc.landed_count
+        b["edit_count"] += oc.edit_count
+        b["token_total"] += sum(v for b2 in (s.token_usage or {}).values() for v in b2.values())
+
+    return [{"date": d.isoformat(), **buckets[d]} for d in sorted(buckets)]
+
+
+def compute_concurrency(sessions, overlap_threshold_sec: int = 300
+                        ) -> tuple[int, int]:
+    """检测窗口内会话并发情况。
+
+    只有时间区间重叠 ≥ *overlap_threshold_sec* 才算并发。
+    算法：对每个会话起点 t 扫描所有区间，统计覆盖 [t, t+threshold] 的个数。
+    区间覆盖条件等价于 pairwise 重叠 ≥ threshold（区间图中存在共同交点的
+    充要条件是所有区间交集非空）。O(n²)，当前会话数规模下可接受。
+    返回 (max_concurrent, concurrent_days)。
+    """
+    intervals = []
+    for s in sessions:
+        a = parse_timestamp(s.first_ts)
+        b = parse_timestamp(s.last_ts)
+        if a is None or b is None or b <= a:
+            continue
+        intervals.append((a, b))
+
+    if not intervals:
+        return (1, 0)
+
+    thresh = timedelta(seconds=overlap_threshold_sec)
+    # 收集所有候选时间点：每个区间的起点
+    starts = sorted({a for a, _ in intervals})
+
+    max_concurrent = 1
+    concurrent_days: set = set()
+
+    for t in starts:
+        t_end = t + thresh
+        count = sum(1 for a, b in intervals if a <= t and b >= t_end)
+        if count > max_concurrent:
+            max_concurrent = count
+        if count >= 2:
+            concurrent_days.add(t.date())
+
+    return (max_concurrent, len(concurrent_days))
+
+
+def aggregate_metrics(sessions, stats, outcomes,
+                      custom_skill_count: int = 0,
+                      claude_md_sessions: int = 0) -> AggregateMetrics:
     # sessions: list[ParsedSession]; stats: list[SessionStats]; outcomes: list[OutcomeStats]
     # 三个列表一一对应(同序、等长)。
     session_count = len(sessions)
@@ -145,27 +212,56 @@ def aggregate_metrics(sessions, stats, outcomes) -> AggregateMetrics:
     # 含 cache_read/cache_creation；非计费口径，仅作量级粗指标，勿当成本读
     token_total = sum(v for b in token_usage.values() for v in b.values())
 
+    # -- plan_mode 聚合 --
+    plan_mode_sessions = sum(1 for s in sessions if s.plan_mode_count > 0)
+    plan_mode_count = sum(s.plan_mode_count for s in sessions)
+
+    # -- skill / MCP 频次聚合 --
+    skill_counts: dict = {}
+    for s in sessions:
+        for sk in s.skill_names:
+            skill_counts[sk] = skill_counts.get(sk, 0) + 1
+    mcp_server_counts: dict = {}
+    for s in sessions:
+        for sv in s.mcp_servers:
+            mcp_server_counts[sv] = mcp_server_counts.get(sv, 0) + 1
+
+    # -- 日粒度聚合 --
+    daily = _compute_daily(sessions, stats, outcomes)
+
+    # -- 并发检测 --
+    max_concurrent_sessions, concurrent_days = compute_concurrency(sessions)
+
     return AggregateMetrics(
         session_count=session_count,
         human_input_count=human_input_count,
         active_days=active_days,
-        avg_turns=avg_turns,
-        tool_breadth=tool_breadth,
-        tool_session_counts=tool_session_counts,
         subagent_sessions=subagent_sessions,
         workflow_sessions=workflow_sessions,
         mcp_sessions=mcp_sessions,
-        model_counts=model_counts,
         commit_count=commit_count,
         landed_count=landed_count,
         edit_count=edit_count,
-        duration_median_min=duration_median_min,
-        project_breakdown=project_breakdown,
-        anchor_counts=anchor_counts,
-        token_usage=token_usage,
-        token_total=token_total,
-        trend=compute_trend(sessions, stats, outcomes),
         short_turn_count=short_turn_count,
         option_pick_count=option_pick_count,
         decision_point_count=decision_point_count,
+        plan_mode_sessions=plan_mode_sessions,
+        plan_mode_count=plan_mode_count,
+        concurrent_days=concurrent_days,
+        claude_md_sessions=claude_md_sessions,
+        tool_breadth=tool_breadth,
+        max_concurrent_sessions=max_concurrent_sessions,
+        tool_session_counts=tool_session_counts,
+        model_counts=model_counts,
+        project_breakdown=project_breakdown,
+        anchor_counts=anchor_counts,
+        token_usage=token_usage,
+        skill_counts=skill_counts,
+        mcp_server_counts=mcp_server_counts,
+        avg_turns=avg_turns,
+        duration_median_min=duration_median_min,
+        token_total=token_total,
+        trend=compute_trend(sessions, stats, outcomes),
+        daily=daily,
+        custom_skill_count=custom_skill_count,
     )

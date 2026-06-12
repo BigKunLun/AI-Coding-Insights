@@ -8,6 +8,7 @@ from .signals import compute_stats, aggregate_metrics
 from .outcome import compute_outcome
 from .profile_input import build_session_input
 from .batch import make_batches
+from .customization import scan_custom_skills, detect_hook_config, compute_customization_signals
 from .snapshot import save_snapshot, load_latest, diff_metrics, DEFAULT_SNAPSHOT_DIR, _CORE_KEYS
 from .profile_schema import validate_profile
 from .obs_check import check_obs_coverage
@@ -138,12 +139,42 @@ def _emit_batches(args, cfg, now, since) -> int:
     outcomes = [compute_outcome(s) for s in sessions]
     sessions_input = [build_session_input(se, st, oc)
                       for se, st, oc in zip(sessions, stats, outcomes)]
-    metrics = aggregate_metrics(sessions, stats, outcomes)
+
+    # -- customization 信号扫描 --
+    custom_skills = scan_custom_skills()
+    custom_skill_count = len(custom_skills)
+    # CLAUDE.md：检查各项目 cwd 下的 CLAUDE.md 在窗口内是否被修改
+    claude_md_sessions = 0
+    cutoff_mtime = since or (now - timedelta(days=days))
+    seen_cwd = set()
+    for s in sessions:
+        if s.cwd in seen_cwd:
+            continue
+        seen_cwd.add(s.cwd)
+        cmdf = Path(s.cwd) / "CLAUDE.md"
+        if cmdf.is_file():
+            try:
+                mtime = datetime.fromtimestamp(cmdf.stat().st_mtime, tz=timezone.utc)
+                if mtime >= cutoff_mtime:
+                    claude_md_sessions += 1
+            except OSError:
+                pass
+
+    metrics = aggregate_metrics(sessions, stats, outcomes,
+                                 custom_skill_count=custom_skill_count,
+                                 claude_md_sessions=claude_md_sessions)
+    # 定制化信号聚合（供报告能力盲区使用）
+    hook_config = detect_hook_config()
+    customization_signals = compute_customization_signals(custom_skills,
+                                                          claude_md_sessions,
+                                                          hook_config)
     batches = make_batches(sessions_input)
 
     # project_breakdown 以 cwd 绝对路径（含项目名）做键，LLM 层与渲染均不消费；
     # 与快照同口径剥离，业务目录名不进入 LLM 上下文与 /tmp 产物。
     agg = {k: v for k, v in _metrics_dict(metrics).items() if k != "project_breakdown"}
+    # 附上定制化信号（不进快照，仅进入 _aggregate.json → 报告渲染）
+    agg["customization_signals"] = customization_signals
     (out_dir / "_aggregate.json").write_text(
         json.dumps(agg, ensure_ascii=False), encoding="utf-8")
 
@@ -301,6 +332,128 @@ def _cmd_init(args) -> int:
     return 0
 
 
+def _cmd_auto_scan(args) -> int:
+    """后台自动扫描（由 SessionEnd hook 触发）。
+
+    Lock file 防重入：同一天只执行一次；失败静默退出不打扰用户。
+    """
+
+    lock_dir = Path.home() / ".ai-coding-insights"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_file = lock_dir / ".auto-scan.lock"
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # 检查 lock file
+    if lock_file.is_file():
+        try:
+            prev = lock_file.read_text(encoding="utf-8").strip()
+            if prev == today_str:
+                return 0  # 今天已执行，静默跳过
+        except OSError:
+            pass
+
+    # 原子写入 lock（先写 tmp 再 rename）
+    tmp = lock_file.with_name(lock_file.name + ".tmp")
+    try:
+        tmp.write_text(today_str, encoding="utf-8")
+        tmp.replace(lock_file)
+    except OSError:
+        return 0  # 写锁失败不阻塞
+
+    # 执行扫描 + 渲染
+    try:
+        now = datetime.now(timezone.utc)
+        cfg = load_config(resolve_config_path(args.config, args.plugin_root))
+        days = args.days or cfg.lookback_days
+
+        # 读上次快照决定 since（防御：快照缺 generated_at 或格式异常时安全降级）
+        prev_snapshot = load_latest(dir=Path(args.snapshot_dir))
+        prev_generated = (prev_snapshot or {}).get("generated_at")
+        since_str = prev_generated[:10] if prev_generated else ""
+        if since_str:
+            try:
+                since = datetime.strptime(since_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            except ValueError:
+                since = now - timedelta(days=days)
+        else:
+            since = now - timedelta(days=days)
+
+        window_decision = decide_window(
+            prev_generated[:10] if prev_generated else None,
+            now.date().isoformat())
+        if window_decision.status in ("too_soon",):
+            return 0
+
+        sessions = discover_sessions(Path(args.projects_dir), cfg.discovery_rules,
+                                     days, now, since=since)
+        if not sessions:
+            return 0
+
+        stats = [compute_stats(s, cfg.short_turn_max_chars) for s in sessions]
+        outcomes = [compute_outcome(s) for s in sessions]
+        custom_skills = scan_custom_skills()
+        custom_skill_count = len(custom_skills)
+        claude_md_sessions = 0
+        cutoff_mtime = since
+        seen_cwd = set()
+        for s in sessions:
+            if s.cwd in seen_cwd:
+                continue
+            seen_cwd.add(s.cwd)
+            cmdf = Path(s.cwd) / "CLAUDE.md"
+            if cmdf.is_file():
+                try:
+                    mtime = datetime.fromtimestamp(cmdf.stat().st_mtime, tz=timezone.utc)
+                    if mtime >= cutoff_mtime:
+                        claude_md_sessions += 1
+                except OSError:
+                    pass
+
+        metrics = aggregate_metrics(sessions, stats, outcomes,
+                                     custom_skill_count=custom_skill_count,
+                                     claude_md_sessions=claude_md_sessions)
+        metrics_dict = _metrics_dict(metrics)
+        # 定制化信号（供报告能力盲区使用）
+        hook_config = detect_hook_config()
+        metrics_dict["customization_signals"] = compute_customization_signals(
+            custom_skills, claude_md_sessions, hook_config)
+
+        # 生成简化报告
+        out_dir = Path(args.out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_file = out_dir / f"aci-auto-{today_str}.html"
+
+        # 组装 posture_distribution（auto-scan 无 LLM 判定，L4 取中性值）
+        posture = assemble_posture(metrics_dict.get("decision_point_count", 0),
+                                   metrics_dict.get("short_turn_count", 0),
+                                   metrics_dict.get("option_pick_count", 0),
+                                   0.5)
+        profile = {"l4_share": 0.5, "posture_distribution": posture}
+        meta = {
+            "generated_at": now.isoformat(),
+            "session_count": len(sessions),
+            "mode": cfg.mode,
+        }
+        html = render_profile_report(profile, meta, metrics=metrics_dict, diff=None)
+        out_file.write_text(html, encoding="utf-8")
+
+        # 保存快照，确保下次 auto-scan 窗口增量推进
+        outcome = {}
+        snap_metrics = {k: v for k, v in metrics_dict.items() if k in _CORE_KEYS}
+        save_snapshot(snap_metrics, posture,
+                      {"landed": outcome.get("landed"), "total": outcome.get("total")},
+                      meta["generated_at"],
+                      {"lookback_days": days, "status": window_decision.status,
+                       "truncated": False, "mode": cfg.mode},
+                      dir=Path(args.snapshot_dir))
+    except Exception:
+        import sys
+        print(f"auto-scan 执行失败，跳过本次自动评估", file=sys.stderr)
+        return 0  # 异常静默退出（不打扰用户主流程）
+
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ai_coding_insights")
     sub = ap.add_subparsers(dest="cmd")
@@ -337,6 +490,13 @@ def main(argv=None) -> int:
     rp.add_argument("--window", default=None)
     rp.add_argument("--run-started", default=None)   # ISO 8601，编排启动时刻
     rp.add_argument("--run-agents", type=int, default=None)
+    au = sub.add_parser("auto-scan")
+    au.add_argument("--out-dir", required=True)
+    au.add_argument("--config", default=None)
+    au.add_argument("--plugin-root", default=None)
+    au.add_argument("--projects-dir", default=str(Path.home()/".claude"/"projects"))
+    au.add_argument("--days", type=int, default=None)
+    au.add_argument("--snapshot-dir", default=str(DEFAULT_SNAPSHOT_DIR))
     # 向后兼容：Plan 1 的 SKILL.md 调用无子命令（如 `--config X --out Y`）。
     # argparse 子命令模式下，若 argv 首个 token 不是已知子命令，顶层 parse_args 会
     # 把后续 option 的取值误判为子命令选择并直接 SystemExit，根本到不了下面的
@@ -352,6 +512,8 @@ def main(argv=None) -> int:
             return _cmd_verify_obs(args)
         if args.cmd == "render-profile":
             return _cmd_render_profile(args)
+        if args.cmd == "auto-scan":
+            return _cmd_auto_scan(args)
         # 默认 / "scan"：向后兼容（无子命令时按 scan 解析）
         if args.cmd is None:
             args = sc.parse_args(raw)
