@@ -187,6 +187,12 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
                  if st.duration_seconds is not None
                  and 0 <= st.duration_seconds <= _DURATION_OUTLIER_SEC]
     duration_median_min = statistics.median(durations) / 60 if durations else None
+    # P90 指标：剔除大量微会话（1-2 轮即关闭）拉低均值/中位数，P90 反映"实际工作会话"水平
+    durations_sorted = sorted(durations)
+    duration_p90_min = (durations_sorted[int(len(durations_sorted) * 0.9)] / 60
+                        if durations_sorted else None)
+    turns_sorted = sorted(st.turn_count for st in stats)
+    turn_p90 = turns_sorted[int(len(turns_sorted) * 0.9)] if turns_sorted else 0
 
     project_breakdown: dict = {}
     for s, o in zip(sessions, outcomes):
@@ -288,4 +294,6 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
         concurrent_days=concurrent_days,
         custom_skill_count=custom_skill_count,
         claude_md_sessions=claude_md_sessions,
+        duration_p90_min=duration_p90_min,
+        turn_p90=turn_p90,
     )

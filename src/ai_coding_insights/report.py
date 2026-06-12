@@ -8,7 +8,7 @@ from .capabilities import unused_capabilities
 
 # 雷达图满刻度（与 stage.py 阶段阈值无关，仅控制可视化拉伸）：
 _RADAR_BREADTH_FULL = 35.0      # 工具广度 35 种打满（≈内置高杠杆能力全集的量级上限）
-_RADAR_DEPTH_FULL_TURNS = 15.0  # 平均 15 轮/会话打满（深度的粗代理）
+_RADAR_DEPTH_FULL_TURNS = 20.0  # P90 轮次 20 打满（取 P90 后上限上浮，微会话不再拉低）
 
 # ════ 样式约定（与设计稿一一对应）════
 # 背景      页面 #f3f5fa · 卡片 #fff · 卡片描边 #e1e5ef · 卡内分隔 #eef0f5
@@ -189,6 +189,8 @@ def _render_daily_heatmap(daily: list | None, idx: int) -> str:
     # 从 first 所在的周一开始，到 last 所在的周日结束
     start = first - timedelta(days=first.weekday())
     end = last - timedelta(days=last.weekday()) + timedelta(days=6)
+    # 不延伸到今天之后（窗口最后一天是周三，周填充不应显示周四-周日灰块）
+    end = min(end, date_type.today())
 
     cells = ""
     cur = start
@@ -199,13 +201,15 @@ def _render_daily_heatmap(daily: list | None, idx: int) -> str:
         iso = cur.isoformat()
         val = data_map.get(iso, 0)
         if val == 0:
-            level, color = 0, "#e8ebf0"
-        elif val == 1:
-            level, color = 1, "#a5d6f9"
-        elif val <= 3:
-            level, color = 2, "#4f9ed4"
+            level, color = 0, "#ebedf0"
+        elif val <= 5:
+            level, color = 1, "#c6e7da"
+        elif val <= 12:
+            level, color = 2, "#6fc9b0"
+        elif val <= 20:
+            level, color = 3, "#2d9d7e"
         else:
-            level, color = 3, "#1a5f8a"
+            level, color = 4, "#1a6b5a"
         title = f"{iso}：{val} 会话" if val else iso
         cells += f'<div class="h-cell h-lv{level}" style="background:{color}" title="{title}"></div>'
         # 月份标签：每月第一天，记录周内列位置（1-7）
@@ -239,10 +243,11 @@ def _render_daily_heatmap(daily: list | None, idx: int) -> str:
         + f'<div class="h-dow-row">{header}</div>'
         + f'<div class="h-grid">{cells}</div>'
         + '<div class="h-legend">'
-        + '<span class="h-leg-swatch" style="background:#e8ebf0"></span> 0'
-        + '<span class="h-leg-swatch" style="background:#a5d6f9"></span> 1'
-        + '<span class="h-leg-swatch" style="background:#4f9ed4"></span> 2–3'
-        + '<span class="h-leg-swatch" style="background:#1a5f8a"></span> 4+ 会话/日'
+        + '<span class="h-leg-swatch" style="background:#ebedf0"></span> 0'
+        + '<span class="h-leg-swatch" style="background:#c6e7da"></span> 1–5'
+        + '<span class="h-leg-swatch" style="background:#6fc9b0"></span> 6–12'
+        + '<span class="h-leg-swatch" style="background:#2d9d7e"></span> 13–20'
+        + '<span class="h-leg-swatch" style="background:#1a6b5a"></span> 21+'
         + '</div></div></div>'
     )
 
@@ -276,7 +281,7 @@ def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
                 f'<span class="tok-val">{cnt}</span></span></div>'
             )
         return (
-            f'<details class="tok-block"><summary><b>{escape(title)}</b></summary>'
+            f'<details class="tok-block" open><summary><b>{escape(title)}</b></summary>'
             f'<div class="tok-chart">{bars}</div></details>'
         )
 
@@ -643,12 +648,12 @@ def render_profile_report(profile: dict, meta: dict,
             return "—"
 
     # ---- 横幅四数 = 四维代表值 ----
-    avg_turns = mval("avg_turns")
+    tp90 = mval("turn_p90")
     hero_nums = [
         ("#67e8f9", pct0(landed_ratio), "成果 · 落地率"),
         ("#a5b4fc", f"{l4:.0%}", "姿势 · L4 主导"),
         ("#5eead4", num(mval("tool_breadth")), "水平 · 工具广度"),
-        ("#fcd34d", "—" if avg_turns is None else f"{float(avg_turns):.1f}", "深度 · 轮次/会话"),
+        ("#fcd34d", num(tp90), "深度 · P90 轮次/会话"),
     ]
     hero_nums_html = "".join(
         f'<div><div class="hnum" style="color:{c}">{v}</div>'
@@ -680,7 +685,7 @@ def render_profile_report(profile: dict, meta: dict,
             ("会话数", num(mval("session_count")), diff_html("session_count")),
             ("有效输入", num(mval("human_input_count")), diff_html("human_input_count")),
             ("活跃天数", num(mval("active_days")), diff_html("active_days")),
-            ("时长中位数", dur(mval("duration_median_min")), diff_html("duration_median_min")),
+            ("时长 P90", dur(mval("duration_p90_min")), ""),
         ]),
     ]
     fam_html = ""
@@ -735,8 +740,8 @@ def render_profile_report(profile: dict, meta: dict,
     axis_posture = max(0.0, min(1.0, pct("L3") + pct("L4")))
     tb = mval("tool_breadth")
     axis_breadth = min(float(tb) / _RADAR_BREADTH_FULL, 1.0) if tb is not None else 0.0
-    at = mval("avg_turns")
-    axis_depth = min(float(at) / _RADAR_DEPTH_FULL_TURNS, 1.0) if at is not None else 0.0
+    tp90 = mval("turn_p90")
+    axis_depth = min(float(tp90) / _RADAR_DEPTH_FULL_TURNS, 1.0) if tp90 is not None else 0.0
     if landed_ratio is not None:
         axis_outcome = max(0.0, min(1.0, float(landed_ratio)))
     elif o_total:
@@ -763,7 +768,7 @@ def render_profile_report(profile: dict, meta: dict,
     dim_rows = [
         ("姿势", f"{l4:.0%}", "L4 主导", f"以引导和主导为主，L3+L4 合计 {axis_posture:.0%}"),
         ("水平", num(tb), "种工具", _headline(breadth)),
-        ("深度", "—" if at is None else f"{float(at):.1f}", "轮/会话", _headline(depth)),
+        ("深度", num(tp90), "P90 轮/会话", _headline(depth)),
         ("成果", pct0(landed_ratio), "落地率", outcome_desc),
     ]
     dim_rows_html = ""
@@ -1054,10 +1059,10 @@ b{{font-weight:700}}
 .h-leg-swatch{{display:inline-block;width:14px;height:14px;border-radius:3px}}
 /* ---- 工具/技能/MCP 附录 ---- */
 .tok-block{{margin-bottom:8px}}
-.tok-block summary{{cursor:pointer;font-size:12.5px;font-weight:600;color:#475467;padding:4px 0;list-style:none}}
+.tok-block summary{{cursor:pointer;font-size:13px;font-weight:600;color:#475467;padding:4px 0;list-style:none}}
 .tok-block summary::-webkit-details-marker{{display:none}}
 .tok-chart{{margin-top:8px;display:grid;gap:5px}}
-.tok-row{{display:grid;grid-template-columns:160px 1fr 50px;gap:10px;align-items:center;font-size:12px}}
+.tok-row{{display:grid;grid-template-columns:220px 1fr 70px;gap:12px;align-items:center;font-size:13px}}
 .tok-label{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#344054;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .tok-bar-wrap{{height:10px;border-radius:3px;background:#eef1f6;overflow:hidden}}
 .tok-bar{{height:100%;border-radius:3px;background:linear-gradient(90deg,#22a3c4,#6366f1)}}

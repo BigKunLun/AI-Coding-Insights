@@ -141,6 +141,8 @@ class AggregateMetrics:
     mcp_server_counts: dict = field(default_factory=dict)  # {server_name: 使用会话数}
     daily: list = field(default_factory=list)  # [{date, session_count, human_input_count, commit_count, landed_count, edit_count, token_total}]
     custom_skill_count: int = 0        # 用户自建 skill 文件数（来自文件系统扫描，非 transcript）
+    duration_p90_min: float | None = None  # P90 会话时长（分钟），剔除微会话污染，重度用户更准确
+    turn_p90: int = 0                      # P90 轮次，剔除微会话污染，重度用户更准确
 
     @property
     def dropped_count(self) -> int:
