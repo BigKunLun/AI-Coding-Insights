@@ -261,58 +261,29 @@ def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
         mx = items[0][1] if items else 1
         return items, float(mx)
 
+    def _bar_section(counts: dict, title: str) -> str:
+        """渲染一组降序条形图：标题 + 条形列表。counts 为空返回空串。"""
+        items, mx = _bar_items(counts)
+        if not items:
+            return ""
+        bars = ""
+        for name, cnt in items:
+            w = (cnt / mx * 100.0) if mx else 0.0
+            bars += (
+                f'<div class="tok-row"><span class="tok-label" title="{escape(name)}">'
+                f'{escape(name)}</span><span class="tok-bar-wrap">'
+                f'<span class="tok-bar" style="width:{w:.1f}%"></span>'
+                f'<span class="tok-val">{cnt}</span></span></div>'
+            )
+        return (
+            f'<details class="tok-block"><summary><b>{escape(title)}</b></summary>'
+            f'<div class="tok-chart">{bars}</div></details>'
+        )
+
     sections = ""
-    # 高频工具 Top 15
-    if tool_session_counts:
-        items, mx = _bar_items(tool_session_counts)
-        bars = ""
-        for name, cnt in items:
-            w = (cnt / mx * 100.0) if mx else 0.0
-            bars += (
-                f'<div class="tok-row"><span class="tok-label" title="{escape(name)}">'
-                f'{escape(name)}</span><span class="tok-bar-wrap">'
-                f'<span class="tok-bar" style="width:{w:.1f}%"></span>'
-                f'<span class="tok-val">{cnt}</span></span></div>'
-            )
-        sections += (
-            '<details class="tok-block"><summary><b>高频工具 Top 15</b></summary>'
-            f'<div class="tok-chart">{bars}</div></details>'
-        )
-
-    # 技能频次
-    if skill_counts:
-        items, mx = _bar_items(skill_counts)
-        bars = ""
-        for name, cnt in items:
-            w = (cnt / mx * 100.0) if mx else 0.0
-            bars += (
-                f'<div class="tok-row"><span class="tok-label" title="{escape(name)}">'
-                f'{escape(name)}</span><span class="tok-bar-wrap">'
-                f'<span class="tok-bar" style="width:{w:.1f}%"></span>'
-                f'<span class="tok-val">{cnt}</span></span></div>'
-            )
-        sections += (
-            '<details class="tok-block"><summary><b>技能频次</b></summary>'
-            f'<div class="tok-chart">{bars}</div></details>'
-        )
-
-    # MCP Server 频次
-    if mcp_server_counts:
-        items, mx = _bar_items(mcp_server_counts)
-        bars = ""
-        for name, cnt in items:
-            w = (cnt / mx * 100.0) if mx else 0.0
-            bars += (
-                f'<div class="tok-row"><span class="tok-label" title="{escape(name)}">'
-                f'{escape(name)}</span><span class="tok-bar-wrap">'
-                f'<span class="tok-bar" style="width:{w:.1f}%"></span>'
-                f'<span class="tok-val">{cnt}</span></span></div>'
-            )
-        sections += (
-            '<details class="tok-block"><summary><b>MCP Server 频次</b></summary>'
-            f'<div class="tok-chart">{bars}</div></details>'
-        )
-
+    sections += _bar_section(tool_session_counts or {}, "高频工具 Top 15")
+    sections += _bar_section(skill_counts or {}, "技能频次")
+    sections += _bar_section(mcp_server_counts or {}, "MCP Server 频次")
     return sections
 
 

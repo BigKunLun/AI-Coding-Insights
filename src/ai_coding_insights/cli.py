@@ -422,8 +422,8 @@ def _cmd_auto_scan(args) -> int:
             since = now - timedelta(days=days)
 
         window_decision = decide_window(
-            prev_generated[:10] if prev_generated else None,
-            now.date().isoformat())
+            date.fromisoformat(prev_generated[:10]) if prev_generated else None,
+            now.date())
         if window_decision.status in ("too_soon",):
             return 0
 

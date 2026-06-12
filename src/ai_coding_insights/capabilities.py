@@ -38,7 +38,7 @@ def unused_capabilities(tool_session_counts: dict,
     未提供时这三项不进入盲区（无法判定，不报假阳性）。
     """
     tools = set(tool_session_counts or {})
-    # 需要 customization_signals 才能判定的能力（无此数据时跳过，不报假阳性）
+    # 需要 customization_signals 才能判定的能力：无此数据时跳过，不报假阳性
     _NEEDS_CS = {"自建 Skill", "CLAUDE.md 定制", "Hook 自动化"}
     result = []
     for label, used, scene in _CAPABILITIES:
@@ -47,6 +47,9 @@ def unused_capabilities(tool_session_counts: dict,
         try:
             is_used = used(tools, customization_signals)
         except TypeError:
+            # 旧版谓词只接受 tools 一个参数（如 SubAgent/Workflow 等）；
+            # 新版谓词接受 (tools, customization_signals)。TypeError 说明
+            # 是旧版签名，回退单参数调用。
             is_used = used(tools)
         if not is_used:
             result.append({"label": label, "scene": scene})
