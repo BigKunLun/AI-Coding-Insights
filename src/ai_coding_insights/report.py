@@ -345,27 +345,32 @@ def _encode_cwd(path: str) -> str:
     return re.sub(r"[/.]", "-", str(path))
 
 
-def _ptr_chip(entry: dict, projects: list) -> str:
-    """证据/高光指针胶囊：「项目名 · 会话ID前8位 ↗」，完整指针放 title 悬停可见。
+def _ptr_label(pointer, projects: list) -> str:
+    """指针的脱敏标签：「项目N · 会话ID前8位」，匹配不到项目只出会话短 ID。
 
-    项目名经 meta.included_projects 反查（编码目录名匹配），匹配不到只出会话短 ID；
-    渲染前指针经规则层核验，未命中的明示警示而非装作可回看。
+    绝不含真实项目名 / 绝对路径——可见文本与 title 同取此标签，悬停与查看源码均不泄露
+    业务标识（项目目录名含产品/客户名，属敏感信息，快照同样剥离）。溯源由本地按序号另查。
     """
-    pointer = str(entry.get("pointer", ""))
-    path_part = pointer.split("#", 1)[0]
+    path_part = str(pointer).split("#", 1)[0]
     stem = path_part.rsplit("/", 1)[-1]
     stem = stem[:-6] if stem.endswith(".jsonl") else stem
     sid = stem[:8]
     parent = path_part.rsplit("/", 2)[-2] if "/" in path_part else ""
-    label = sid
     for i, p in enumerate(projects or []):
         if parent and parent == _encode_cwd(p):
-            # 不把项目目录名（含产品/客户名）渲染进可见报告——项目名属敏感信息（快照
-            # 同样剥离，见 cli 落盘脱敏）。用稳定序号分组，保留「哪个项目」而不泄名。
-            label = f"项目{i + 1} · {sid}"
-            break
+            return f"项目{i + 1} · {sid}"
+    return sid
+
+
+def _ptr_chip(entry: dict, projects: list) -> str:
+    """证据/高光指针胶囊：「项目N · 会话ID前8位 ↗」。
+
+    title 与可见文本同为脱敏标签——绝不把绝对路径/真实项目名渲染进 HTML（含 title 悬停）；
+    渲染前指针经规则层核验，未命中的明示警示而非装作可回看。
+    """
+    label = _ptr_label(entry.get("pointer", ""), projects)
     miss = ' <span class="ptr-miss">⚠ 指针未命中</span>' if entry.get("pointer_missing") else ""
-    return (f'<span class="ptr-chip" title="{escape(pointer)}">{escape(label)} ↗</span>{miss}')
+    return (f'<span class="ptr-chip" title="{escape(label)}">{escape(label)} ↗</span>{miss}')
 
 
 def _render_highlights_section(highlights: list | None, projects: list, idx: int) -> str:
@@ -382,7 +387,7 @@ def _render_highlights_section(highlights: list | None, projects: list, idx: int
             f'<div class="hl-row{last}">'
             f'<span class="hl-dot" style="background:{bg};color:{fg}">{i + 1}</span>'
             f'<span class="hl-text">{escape(str(h.get("behavior", "")))}</span>'
-            f'<span class="hl-link" title="{escape(str(h.get("pointer", "")))}">原会话 ↗</span>{miss}'
+            f'<span class="hl-link" title="{escape(_ptr_label(h.get("pointer", ""), projects))}">原会话 ↗</span>{miss}'
             '</div>'
         )
     return (_sec_header(idx, "高光时刻")

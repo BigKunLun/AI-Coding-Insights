@@ -25,7 +25,7 @@ def test_render_profile_report():
     assert "L3" in html and "60%" in html              # 姿势分布
     assert "18" in html and "23" in html               # 成果
     assert "推翻一处实现方案并给约束" in html             # 证据行为级
-    assert "/p/s.jsonl#u1" in html                     # 指针
+    assert "ptr-chip" in html and "/p/s.jsonl" not in html  # 指针胶囊渲染，完整路径不泄露
     # XSS 防护：注入 < 被转义
     p2 = dict(profile); p2["evidence"] = [{"pointer": "x", "behavior": "<script>x</script>"}]
     assert "<script>x" not in render_profile_report(p2, meta)

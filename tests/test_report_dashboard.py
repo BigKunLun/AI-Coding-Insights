@@ -446,8 +446,8 @@ def test_pointer_missing_annotation_renders():
     ]
     html = render_profile_report(profile, _meta(), _metrics(), None)
     assert html.count("⚠ 指针未命中") == 2
-    ok_row = html.split("/abs/ok.jsonl#u1")[1][:80]
-    assert "指针未命中" not in ok_row
+    ok_pos = html.index("ok ↗</span>")          # 命中行的脱敏短 ID 胶囊（不再泄露完整路径）
+    assert "指针未命中" not in html[ok_pos:ok_pos + 60]
 
 
 def test_dashboard_scope_pill_personal_mode():
@@ -516,3 +516,20 @@ def test_report_renders_health_section_with_drift():
 def test_report_no_health_section_when_absent():
     html = render_profile_report(PROFILE_V5, META_V5, METRICS_V5, DIFF_V5)
     assert "数据健康" not in html          # metrics 无 parse_health → 不渲染该段
+
+
+def test_pointer_title_never_leaks_real_project_name():
+    # 隐私铁律：title 悬停曾直出含真实项目名的绝对路径。可见文本与 title 必须同为脱敏标签，
+    # HTML 任何角落（含 title）都不得出现真实项目名 / 绝对路径段。
+    proj = "/r/Healio"
+    enc = "-r-Healio"          # _encode_cwd(proj)：/ . 换 -
+    ptr = f"/u/.claude/projects/{enc}/abc12345.jsonl#u1"
+    prof = copy.deepcopy(PROFILE)
+    prof["evidence"] = [{"pointer": ptr, "behavior": "推翻一处实现并给更优约束"}]
+    prof["highlights"] = [{"pointer": ptr, "behavior": "率先识别隐私风险并改为本地形态"}]
+    prof["frictions"] = [{"observation": "o", "suggestion": "s", "pointers": [{"pointer": ptr}]}]
+    html = render_profile_report(prof, META, METRICS, None)
+    assert "项目1" in html                 # 脱敏序号映射生效
+    assert "Healio" not in html            # 真实项目名任何角落都不出现
+    assert enc not in html                 # 编码路径段不出现（含 title 悬停）
+    assert 'title="/' not in html          # 没有任何绝对路径直出 title
