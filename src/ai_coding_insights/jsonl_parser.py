@@ -63,6 +63,10 @@ def parse_session(path) -> ParsedSession:
     plan_mode_count = 0
     skill_names: list = []
     mcp_servers: set = set()        # 用 set 收集，最后转 sorted list
+    thinking_block_count = 0
+    background_task_count = 0
+    max_parallel_agents = 0
+    parallel_agent_turns = 0
     seen_sha = set()
     session_id = cwd = git_branch = first_ts = last_ts = None
     # 必须逐行迭代文件句柄而非 splitlines()：jsonl 仅以 \n 分隔，但 splitlines()
@@ -103,27 +107,47 @@ def parse_session(path) -> ParsedSession:
                     bucket["output"] += usage.get("output_tokens") or 0
                     bucket["cache_read"] += usage.get("cache_read_input_tokens") or 0
                     bucket["cache_creation"] += usage.get("cache_creation_input_tokens") or 0
+                agent_in_msg = 0      # 本条 message 内并发派出的 Agent 数（真并行度）
                 for b in msg.get("content") or []:
-                    if isinstance(b, dict) and b.get("type") == "tool_use":
-                        name = b.get("name", "")
-                        tools.append(name)
-                        if name == "AskUserQuestion" and b.get("id"):
-                            ask_ids.add(b["id"])
-                        # plan_mode：EnterPlanMode / ExitPlanMode tool_use
-                        if name in ("EnterPlanMode", "ExitPlanMode"):
-                            plan_mode_count += 1
-                        # skill_names：从 Skill tool_use.input.skill 提取
-                        if name == "Skill":
-                            inp = b.get("input")
-                            skill = (inp.get("skill") if isinstance(inp, dict) else None)
-                            if isinstance(skill, str) and skill:
-                                skill_names.append(skill)
-                        # mcp_servers：从 mcp__<server>__<tool> 解析 server 名
-                        # 防御：parts[1] 非空才加入（防畸形工具名如 "mcp__"）
-                        if name.startswith("mcp__"):
-                            parts = name.split("__", 2)
-                            if len(parts) >= 2 and parts[1]:
-                                mcp_servers.add(parts[1])
+                    if not isinstance(b, dict):
+                        continue
+                    btype = b.get("type")
+                    # thinking 块：深度推理强度信号（与 tool_use 并列出现在 content 里）
+                    if btype == "thinking":
+                        thinking_block_count += 1
+                        continue
+                    if btype != "tool_use":
+                        continue
+                    name = b.get("name", "")
+                    tools.append(name)
+                    inp = b.get("input")
+                    # background work：Bash/Agent 等带 run_in_background:true 的后台委托
+                    if isinstance(inp, dict) and inp.get("run_in_background") is True:
+                        background_task_count += 1
+                    # 真并行：同一条 assistant message 内同时派出的 Agent 计数
+                    if name == "Agent":
+                        agent_in_msg += 1
+                    if name == "AskUserQuestion" and b.get("id"):
+                        ask_ids.add(b["id"])
+                    # plan_mode：EnterPlanMode / ExitPlanMode tool_use
+                    if name in ("EnterPlanMode", "ExitPlanMode"):
+                        plan_mode_count += 1
+                    # skill_names：从 Skill tool_use.input.skill 提取
+                    if name == "Skill":
+                        skill = (inp.get("skill") if isinstance(inp, dict) else None)
+                        if isinstance(skill, str) and skill:
+                            skill_names.append(skill)
+                    # mcp_servers：从 mcp__<server>__<tool> 解析 server 名
+                    # 防御：parts[1] 非空才加入（防畸形工具名如 "mcp__"）
+                    if name.startswith("mcp__"):
+                        parts = name.split("__", 2)
+                        if len(parts) >= 2 and parts[1]:
+                            mcp_servers.add(parts[1])
+                # 单条 message 的并行峰值与真并行轮次（≥2 个 Agent 同发才算真并行）
+                if agent_in_msg > max_parallel_agents:
+                    max_parallel_agents = agent_in_msg
+                if agent_in_msg >= 2:
+                    parallel_agent_turns += 1
             # AskUserQuestion 选项回答：tool_result 按 id 配对 + 顶层 toolUseResult
             # 含 answers dict（拒绝时是字符串回执，天然排除）。每答一题计 1 个决策点。
             if line.get("type") == "user" and ask_ids:
@@ -159,4 +183,8 @@ def parse_session(path) -> ParsedSession:
         option_pick_count=option_pick_count,
         plan_mode_count=plan_mode_count,
         skill_names=sorted(set(skill_names)),
-        mcp_servers=sorted(mcp_servers))
+        mcp_servers=sorted(mcp_servers),
+        thinking_block_count=thinking_block_count,
+        background_task_count=background_task_count,
+        max_parallel_agents=max_parallel_agents,
+        parallel_agent_turns=parallel_agent_turns)

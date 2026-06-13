@@ -227,3 +227,32 @@ def test_aggregate_friction_stats_empty():
         "error_session_count": 0, "error_top_counts": [],
         "override_session_count": 0, "override_top_counts": [],
         "top_session_turns": []}
+
+
+def test_aggregate_advanced_signals():
+    """三个高阶维度信号的聚合：thinking/background 走「总量 + 命中会话数」，
+    真并行走「峰值 + 真并行轮次和」（对齐 plan_mode 的双字段先例）。"""
+    sessions, stats, outcomes = _build()
+    sessions[0].thinking_block_count = 5
+    sessions[0].background_task_count = 2
+    sessions[0].max_parallel_agents = 3
+    sessions[0].parallel_agent_turns = 1
+    sessions[1].max_parallel_agents = 1     # 顺序派发：峰值 1、真并行轮次 0
+    sessions[2].thinking_block_count = 4
+    m = aggregate_metrics(sessions, stats, outcomes)
+    assert m.thinking_block_count == 9       # 5 + 0 + 4
+    assert m.thinking_sessions == 2          # s0, s2
+    assert m.background_task_count == 2      # 仅 s0
+    assert m.background_sessions == 1
+    assert m.max_parallel_agents == 3        # 跨会话取峰值
+    assert m.parallel_agent_turns == 1       # 1 + 0 + 0
+
+
+def test_aggregate_advanced_signals_empty():
+    m = aggregate_metrics([], [], [])
+    assert m.thinking_block_count == 0
+    assert m.thinking_sessions == 0
+    assert m.background_task_count == 0
+    assert m.background_sessions == 0
+    assert m.max_parallel_agents == 0
+    assert m.parallel_agent_turns == 0

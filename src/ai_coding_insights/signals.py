@@ -253,6 +253,14 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
         for sv in s.mcp_servers:
             mcp_server_counts[sv] = mcp_server_counts.get(sv, 0) + 1
 
+    # -- 高阶维度信号聚合（thinking/background 走「总量+命中会话」，真并行走「峰值+轮次和」）--
+    thinking_block_count = sum(s.thinking_block_count for s in sessions)
+    thinking_sessions = sum(1 for s in sessions if s.thinking_block_count > 0)
+    background_task_count = sum(s.background_task_count for s in sessions)
+    background_sessions = sum(1 for s in sessions if s.background_task_count > 0)
+    max_parallel_agents = max((s.max_parallel_agents for s in sessions), default=0)
+    parallel_agent_turns = sum(s.parallel_agent_turns for s in sessions)
+
     # -- 日粒度聚合 --
     daily = _compute_daily(sessions, stats, outcomes)
 
@@ -296,4 +304,10 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
         claude_md_sessions=claude_md_sessions,
         duration_p90_min=duration_p90_min,
         turn_p90=turn_p90,
+        thinking_block_count=thinking_block_count,
+        thinking_sessions=thinking_sessions,
+        background_task_count=background_task_count,
+        background_sessions=background_sessions,
+        max_parallel_agents=max_parallel_agents,
+        parallel_agent_turns=parallel_agent_turns,
     )

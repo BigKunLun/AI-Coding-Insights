@@ -57,6 +57,10 @@ class ParsedSession:
     plan_mode_count: int = 0        # EnterPlanMode / ExitPlanMode tool_use 次数
     skill_names: list = field(default_factory=list)   # 去重 skill 名列表（从 Skill tool_use.input.skill 提取）
     mcp_servers: list = field(default_factory=list)    # 去重 MCP server 名列表（从 mcp__<server>__<tool> 解析）
+    thinking_block_count: int = 0   # assistant content 里 type=="thinking" 的块数（深度推理强度）
+    background_task_count: int = 0  # 带 run_in_background:true 的 tool_use 数（后台委托）
+    max_parallel_agents: int = 0    # 单条 assistant message 内 Agent tool_use 的峰值（真并行度）
+    parallel_agent_turns: int = 0   # 单条 message 内并发派出 ≥2 个 Agent 的轮次数
 
 
 @dataclass
@@ -143,6 +147,12 @@ class AggregateMetrics:
     custom_skill_count: int = 0        # 用户自建 skill 文件数（来自文件系统扫描，非 transcript）
     duration_p90_min: float | None = None  # P90 会话时长（分钟），剔除微会话污染，重度用户更准确
     turn_p90: int = 0                      # P90 轮次，剔除微会话污染，重度用户更准确
+    thinking_block_count: int = 0   # sum：深度推理块总数（深度信号）
+    thinking_sessions: int = 0      # count：出现过 thinking 块的会话数
+    background_task_count: int = 0  # sum：后台委托(run_in_background) tool_use 总数
+    background_sessions: int = 0    # count：出现过后台委托的会话数
+    max_parallel_agents: int = 0    # peak：跨会话单轮最大并行 Agent 数（真并行度）
+    parallel_agent_turns: int = 0   # sum：真并行轮次总数（单轮 ≥2 Agent 同发）
 
     @property
     def dropped_count(self) -> int:

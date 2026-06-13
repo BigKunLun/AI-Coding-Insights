@@ -142,3 +142,120 @@ def test_mcp_empty_server_name_defense(tmp_path):
     _write_jsonl(lines, tmp_path / "test.jsonl")
     s = parse_session(tmp_path / "test.jsonl")
     assert s.mcp_servers == ["context7"]  # 空 server 名被过滤
+
+
+# ---- 三个高阶维度信号（Thinking / Background Work / 真并行）----
+# 形状以本机真实 transcript 校准：thinking 是 assistant content block type=="thinking"；
+# run_in_background 是 Bash/Agent tool_use 的 input 布尔；真并行 = 单条 assistant
+# message 内 name=="Agent" 的 tool_use 块数（API 并行工具调用落同一条消息）。
+
+def test_thinking_block_count(tmp_path):
+    """assistant content 里 type=="thinking" 的块计入 thinking_block_count。"""
+    lines = [
+        {"type": "user", "sessionId": "s1", "cwd": "/repo",
+         "message": {"content": "深入分析下", "role": "user"}, "timestamp": "2025-01-01T10:00:00Z"},
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "thinking", "thinking": "let me reason", "signature": "x"},
+             {"type": "text", "text": "好的"},
+         ]}, "timestamp": "2025-01-01T10:01:00Z"},
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "thinking", "thinking": "again", "signature": "y"},
+         ]}, "timestamp": "2025-01-01T10:02:00Z"},
+    ]
+    _write_jsonl(lines, tmp_path / "test.jsonl")
+    s = parse_session(tmp_path / "test.jsonl")
+    assert s.thinking_block_count == 2
+
+
+def test_thinking_block_count_zero_when_absent(tmp_path):
+    lines = [
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "text", "text": "纯文本回复"}]},
+         "timestamp": "2025-01-01T10:01:00Z"},
+    ]
+    _write_jsonl(lines, tmp_path / "test.jsonl")
+    s = parse_session(tmp_path / "test.jsonl")
+    assert s.thinking_block_count == 0
+
+
+def test_background_task_count_bash_and_agent(tmp_path):
+    """Bash 与 Agent 的 tool_use 带 run_in_background:true 各计一次。"""
+    lines = [
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "tool_use", "name": "Bash", "id": "t1",
+              "input": {"command": "sleep 1", "run_in_background": True}},
+             {"type": "tool_use", "name": "Agent", "id": "t2",
+              "input": {"prompt": "p", "subagent_type": "x", "run_in_background": True}},
+         ]}, "timestamp": "2025-01-01T10:01:00Z"},
+    ]
+    _write_jsonl(lines, tmp_path / "test.jsonl")
+    s = parse_session(tmp_path / "test.jsonl")
+    assert s.background_task_count == 2
+
+
+def test_background_task_count_false_or_absent_not_counted(tmp_path):
+    """run_in_background 为 false 或缺失的 tool_use 不计。"""
+    lines = [
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "tool_use", "name": "Bash", "id": "t1",
+              "input": {"command": "ls", "run_in_background": False}},
+             {"type": "tool_use", "name": "Bash", "id": "t2",
+              "input": {"command": "pwd"}},  # 缺该键
+         ]}, "timestamp": "2025-01-01T10:01:00Z"},
+    ]
+    _write_jsonl(lines, tmp_path / "test.jsonl")
+    s = parse_session(tmp_path / "test.jsonl")
+    assert s.background_task_count == 0
+
+
+def test_parallel_agents_single_dispatch(tmp_path):
+    """每条 message 只派一个 Agent → 峰值并行=1，真并行轮次=0（顺序派发不算并行）。"""
+    lines = [
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "tool_use", "name": "Agent", "id": "t1", "input": {}}]},
+         "timestamp": "2025-01-01T10:01:00Z"},
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "tool_use", "name": "Agent", "id": "t2", "input": {}}]},
+         "timestamp": "2025-01-01T10:02:00Z"},
+    ]
+    _write_jsonl(lines, tmp_path / "test.jsonl")
+    s = parse_session(tmp_path / "test.jsonl")
+    assert s.max_parallel_agents == 1
+    assert s.parallel_agent_turns == 0
+
+
+def test_parallel_agents_multiple_in_one_message(tmp_path):
+    """单条 message 内 3 个 Agent → 峰值=3，真并行轮次=1。"""
+    lines = [
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "tool_use", "name": "Agent", "id": "t1", "input": {}},
+             {"type": "tool_use", "name": "Agent", "id": "t2", "input": {}},
+             {"type": "tool_use", "name": "Agent", "id": "t3", "input": {}},
+             {"type": "tool_use", "name": "Bash", "id": "t4", "input": {}},
+         ]}, "timestamp": "2025-01-01T10:01:00Z"},
+    ]
+    _write_jsonl(lines, tmp_path / "test.jsonl")
+    s = parse_session(tmp_path / "test.jsonl")
+    assert s.max_parallel_agents == 3
+    assert s.parallel_agent_turns == 1
+
+
+def test_parallel_agents_zero_when_no_agent(tmp_path):
+    lines = [
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "tool_use", "name": "Bash", "id": "t1", "input": {}}]},
+         "timestamp": "2025-01-01T10:01:00Z"},
+    ]
+    _write_jsonl(lines, tmp_path / "test.jsonl")
+    s = parse_session(tmp_path / "test.jsonl")
+    assert s.max_parallel_agents == 0
+    assert s.parallel_agent_turns == 0

@@ -681,6 +681,15 @@ def render_profile_report(profile: dict, meta: dict,
             ("MCP 会话", num(mval("mcp_sessions")), diff_html("mcp_sessions")),
             ("模型切换", model_switch, ""),
         ]),
+        # 高阶行为：三个维度信号均为确定性硬指标（深度推理块 / 后台委托 / 真并行），
+        # 由规则层从 transcript 直接计数，不依赖 LLM 判定。真并行峰值=1、轮次=0 表示
+        # 「用过子代理但总是顺序派发、从未单轮并发」——是准确信号而非缺数。
+        ("高阶行为", "#0891b2", "#0e7490", [
+            ("深度推理", num(mval("thinking_block_count")), ""),
+            ("后台委托", num(mval("background_task_count")), ""),
+            ("真并行峰值", num(mval("max_parallel_agents")), ""),
+            ("真并行轮次", num(mval("parallel_agent_turns")), ""),
+        ]),
         ("节奏投入", "#7c3aed", "#6d28d9", [
             ("会话数", num(mval("session_count")), diff_html("session_count")),
             ("有效输入", num(mval("human_input_count")), diff_html("human_input_count")),

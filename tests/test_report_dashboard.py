@@ -170,13 +170,27 @@ DIFF_V5 = {
 }
 
 
-def test_dashboard_v5_three_groups():
+def test_dashboard_metric_families():
     html = render_profile_report(PROFILE_V5, META_V5, METRICS_V5, DIFF_V5)
     assert "产出落地" in html
     assert "协作编排" in html
+    assert "高阶行为" in html
     assert "节奏投入" in html
-    # 指标明细一卡三族（fam 行）
-    assert html.count('class="fam-head"') == 3
+    # 指标明细一卡四族（fam 行）：新增「高阶行为」
+    assert html.count('class="fam-head"') == 4
+
+
+def test_dashboard_advanced_signals_render_values():
+    """三个高阶维度信号在「高阶行为」族里按硬指标确定性渲染。"""
+    metrics = dict(METRICS_V5,
+                   thinking_block_count=6072, thinking_sessions=198,
+                   background_task_count=149, background_sessions=22,
+                   max_parallel_agents=1, parallel_agent_turns=0)
+    html = render_profile_report(PROFILE_V5, META_V5, metrics, DIFF_V5)
+    assert "深度推理" in html and "6072" in html
+    assert "后台委托" in html and "149" in html
+    assert "真并行峰值" in html
+    assert "真并行轮次" in html
 
 
 def test_dashboard_v5_window_and_local_time():
