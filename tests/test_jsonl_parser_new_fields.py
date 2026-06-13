@@ -286,3 +286,22 @@ def test_permission_mode_non_plan_not_counted(tmp_path):
     _write_jsonl(lines, tmp_path / "t.jsonl")
     s = parse_session(tmp_path / "t.jsonl")
     assert s.plan_mode_count == 0
+
+
+# ---- 金丝雀数据源：单遍顺手收 CC 版本 + 记录类型直方图 ----
+
+def test_collects_cc_versions_and_record_types(tmp_path):
+    lines = [
+        {"type": "user", "sessionId": "s1", "cwd": "/r", "version": "2.1.158",
+         "timestamp": "2025-01-01T10:00:00Z", "message": {"content": "hi"}},
+        {"type": "assistant", "sessionId": "s1", "version": "2.1.158",
+         "message": {"model": "m", "content": []}, "timestamp": "2025-01-01T10:01:00Z"},
+        {"type": "queue-operation", "sessionId": "s1", "version": "2.1.170"},
+        {"type": "permission-mode", "sessionId": "s1", "permissionMode": "auto"},
+    ]
+    _write_jsonl(lines, tmp_path / "t.jsonl")
+    s = parse_session(tmp_path / "t.jsonl")
+    assert s.cc_versions == ["2.1.158", "2.1.170"]   # 去重 + 排序
+    assert s.record_type_counts["user"] == 1
+    assert s.record_type_counts["queue-operation"] == 1
+    assert s.record_type_counts["permission-mode"] == 1

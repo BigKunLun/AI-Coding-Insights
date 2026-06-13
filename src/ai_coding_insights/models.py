@@ -61,6 +61,8 @@ class ParsedSession:
     background_task_count: int = 0  # 带 run_in_background:true 的 tool_use 数（后台委托）
     max_parallel_agents: int = 0    # 单条 assistant message 内 Agent tool_use 的峰值（真并行度）
     parallel_agent_turns: int = 0   # 单条 message 内并发派出 ≥2 个 Agent 的轮次数
+    cc_versions: list = field(default_factory=list)        # 去重排序的 CC version 列表（来自记录 version 字段）
+    record_type_counts: dict = field(default_factory=dict) # {记录 type: 条数}，含 parser 不处理的类型，供漂移雷达
 
 
 @dataclass

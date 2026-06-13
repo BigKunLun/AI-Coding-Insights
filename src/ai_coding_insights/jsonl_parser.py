@@ -67,6 +67,8 @@ def parse_session(path) -> ParsedSession:
     background_task_count = 0
     max_parallel_agents = 0
     parallel_agent_turns = 0
+    versions: set = set()
+    record_type_counts: dict = {}
     seen_sha = set()
     session_id = cwd = git_branch = first_ts = last_ts = None
     # 必须逐行迭代文件句柄而非 splitlines()：jsonl 仅以 \n 分隔，但 splitlines()
@@ -80,6 +82,13 @@ def parse_session(path) -> ParsedSession:
                 line = json.loads(raw)
             except json.JSONDecodeError:
                 continue
+            if isinstance(line, dict):
+                rt = line.get("type")
+                if isinstance(rt, str):
+                    record_type_counts[rt] = record_type_counts.get(rt, 0) + 1
+                ver = line.get("version")
+                if isinstance(ver, str) and ver:
+                    versions.add(ver)
             if line.get("type") in ("user", "assistant"):
                 session_id = session_id or line.get("sessionId")
                 cwd = cwd or line.get("cwd")
@@ -193,4 +202,6 @@ def parse_session(path) -> ParsedSession:
         thinking_block_count=thinking_block_count,
         background_task_count=background_task_count,
         max_parallel_agents=max_parallel_agents,
-        parallel_agent_turns=parallel_agent_turns)
+        parallel_agent_turns=parallel_agent_turns,
+        cc_versions=sorted(versions),
+        record_type_counts=record_type_counts)
