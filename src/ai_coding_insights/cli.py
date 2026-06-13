@@ -53,13 +53,26 @@ def _metrics_dict(metrics) -> dict:
             "dropped_count": metrics.dropped_count}
 
 
+def _write_html(out: str, html: str) -> str:
+    """落 HTML 到 out：展开 ~、按需建父目录，返回解析后的绝对/相对路径字符串。
+    避免 `--out ~/x.html` 写出字面量 '~' 目录，或父目录缺失抛裸 traceback（main 只兜 ConfigError）。"""
+    p = Path(out).expanduser()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(html, encoding="utf-8")
+    return str(p)
+
+
 def _cmd_scan(args) -> int:
     cfg = load_config(resolve_config_path(args.config, args.plugin_root))
     days = args.days or cfg.lookback_days
     now = datetime.now(timezone.utc)
     since = None
     if getattr(args, "since", None):
-        since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        try:
+            since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError as exc:
+            # 格式错的 --since 不应抛裸 traceback（main 只兜 ConfigError）
+            raise ConfigError(f"--since 需为 YYYY-MM-DD 格式：{args.since!r}") from exc
 
     if getattr(args, "emit_batches", None):
         return _emit_batches(args, cfg, now, since)
@@ -86,7 +99,7 @@ def _cmd_scan(args) -> int:
     else:
         html = render_count_report(rep)
         if args.out:
-            Path(args.out).write_text(html, encoding="utf-8"); print(args.out)
+            print(_write_html(args.out, html))
         else:
             print(html)
     return 0
@@ -107,7 +120,7 @@ def _emit_batches(args, cfg, now, since) -> int:
     # expert-*：编排者曾擅自把专家产出落盘（2026-06-11 实测），SKILL 已禁止，此处兜底
     for stale in (*out_dir.glob("batch-*.json"), *out_dir.glob("obs-*.json"),
                   *out_dir.glob("expert-*.json")):
-        stale.unlink()
+        stale.unlink(missing_ok=True)   # glob 后文件被并发/外部删除时不抛 FileNotFoundError
     (out_dir / "_aggregate.json").unlink(missing_ok=True)
     (out_dir / "profile.json").unlink(missing_ok=True)
 
@@ -326,7 +339,7 @@ def _cmd_render_profile(args) -> int:
         meta["run"] = run
     html = render_profile_report(profile, meta, metrics, diff)
     out = args.out or str(Path.cwd() / f"aci-report-{datetime.now().date().isoformat()}.html")
-    Path(out).write_text(html, encoding="utf-8")
+    out = _write_html(out, html)
     if not args.no_snapshot:
         outcome = profile.get("outcome", {}) or {}
         # 快照只用于标量核心指标增量对比，按 _CORE_KEYS 白名单收紧：
@@ -474,6 +487,9 @@ def _cmd_auto_scan(args) -> int:
         hook_config = detect_hook_config()
         metrics_dict["customization_signals"] = compute_customization_signals(
             custom_skills, claude_md_sessions, hook_config)
+        # 提取健康度金丝雀（版本漂移雷达）：它存在的意义正是守护这条无人值守路径，
+        # 必须随报告渲染。sessions 已在手、计算廉价，与交互式 scan 同口径写入。
+        metrics_dict["parse_health"] = compute_parse_health(sessions)
 
         # 生成简化报告
         out_dir = Path(args.out_dir)

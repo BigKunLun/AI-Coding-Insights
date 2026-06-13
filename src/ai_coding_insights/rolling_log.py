@@ -13,9 +13,13 @@ def append_rolling_log(log_path: Path, line: str, max_lines: int = 500) -> None:
     任何 OSError（父目录不存在、不可写等）静默吞掉，不抛、不影响调用方。
     """
     try:
+        line = line.replace("\n", " ")   # 单条压成一行，max_lines 才数得准逻辑条数（非物理行）
         prev = (log_path.read_text(encoding="utf-8").splitlines()
                 if log_path.is_file() else [])
         prev.append(line)
         log_path.write_text("\n".join(prev[-max_lines:]) + "\n", encoding="utf-8")
-    except OSError:
+    except Exception:
+        # 诊断辅助绝不能反过来打断后台主流程。除 OSError 外，read_text 遇非法 UTF-8 会抛
+        # UnicodeDecodeError(属 ValueError 非 OSError)，而本函数恰在 auto-scan 自身的 except
+        # 块内被调用——任何漏接异常都会逃逸成 SessionEnd hook 的 traceback。一律静默吞掉。
         pass

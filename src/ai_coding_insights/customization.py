@@ -50,7 +50,9 @@ def detect_hook_config(config_path: str | None = None) -> dict:
     hooks = cfg.get("hooks")
     if not isinstance(hooks, dict):
         return {"has_hooks": False, "hook_events": []}
-    events = sorted(hooks.keys())
+    # 仅统计真正挂了 hook 的事件：声明但为空的事件段（如 "SessionStart": []，CC 容许遗留）
+    # 不应算作启用 hook 自动化，否则会误把该用户从「未用 hook」盲区里剔除、虚报为已用。
+    events = sorted(k for k, v in hooks.items() if v)
     return {"has_hooks": len(events) > 0, "hook_events": events}
 
 

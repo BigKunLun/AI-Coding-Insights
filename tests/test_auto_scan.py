@@ -44,6 +44,28 @@ def test_auto_scan_logs_success(tmp_path):
     assert "ok" in log and "sessions=" in log
 
 
+def test_auto_scan_report_includes_data_health(tmp_path):
+    # 漂移雷达存在的意义正是守护这条无人值守路径：auto-scan 报告必须含「数据健康」段。
+    # （修复前 auto-scan 只接入 customization_signals，遗漏了 parse_health。）
+    proj = tmp_path / "projects" / "proj1"
+    proj.mkdir(parents=True)
+    work = tmp_path / "work"
+    work.mkdir()
+    ts = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    lines = [
+        {"type": "user", "sessionId": "s1", "cwd": str(work), "uuid": "u1",
+         "version": "2.1.158", "timestamp": ts, "message": {"content": "做点事"}},
+        {"type": "assistant", "version": "2.1.158", "timestamp": ts,
+         "message": {"model": "claude-opus-4-8",
+                     "content": [{"type": "tool_use", "name": "Bash", "input": {}}]}},
+    ]
+    (proj / "s1.jsonl").write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
+    rc = _run(tmp_path, tmp_path / "projects")
+    assert rc == 0
+    html = next((tmp_path / "out").glob("aci-auto-*.html")).read_text(encoding="utf-8")
+    assert "数据健康" in html and "2.1.158" in html
+
+
 def test_auto_scan_logs_exception_instead_of_swallowing(tmp_path, monkeypatch):
     import ai_coding_insights.cli as cli
     projects = _make_projects(tmp_path)

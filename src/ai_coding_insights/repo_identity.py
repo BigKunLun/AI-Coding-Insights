@@ -23,14 +23,18 @@ def parse_remote_url(url: str) -> RemoteIdentity | None:
         seg = m.group(2).strip("/").split("/")
     if not host:
         return None
-    host = host.lower()  # 规范化 host：消除 SSH/HTTPS 两分支大小写不一致（org 保持大小写敏感）
+    host = host.lower()  # 规范化 host：消除 SSH/HTTPS 两分支大小写不一致（org 的大小写归一收在 matches 比较时做，identity 保留原样供诊断）
     org = seg[0] if seg and seg[0] else None
     return RemoteIdentity(host=host, org=org)
 
 
 def matches(identity: RemoteIdentity, rules: list[RemoteRule]) -> bool:
+    # org 大小写不敏感：GitHub/GitLab 的 owner/org 名平台层即不区分大小写，规则与远程
+    # 存储大小写不一致不应导致公司会话被静默漏纳（host 已在 parse 时小写归一）。
+    def _org_eq(a: str | None, b: str | None) -> bool:
+        return (a or "").lower() == (b or "").lower()
     return any(
-        identity.host == r.host and (r.org is None or identity.org == r.org)
+        identity.host == r.host and (r.org is None or _org_eq(identity.org, r.org))
         for r in rules
     )
 

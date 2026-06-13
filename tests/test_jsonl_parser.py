@@ -169,6 +169,46 @@ def test_non_string_timestamp_does_not_crash(tmp_path):
     assert s.first_ts == "2026-06-01T00:00:00Z" and s.last_ts == "2026-06-01T00:00:00Z"
 
 
+def test_bare_value_json_line_does_not_crash(tmp_path):
+    """整行是裸 JSON 值（数字/字符串/数组）时跳过，不得 line.get 时 AttributeError 炸整场。"""
+    p = tmp_path / "s4.jsonl"
+    p.write_text("\n".join([
+        "42", '"a bare string"', "[1, 2, 3]",
+        json.dumps({"type": "user", "sessionId": "s4", "cwd": "/r",
+                    "timestamp": "2026-06-01T00:00:00Z", "message": {"content": "正常"}}),
+    ]), encoding="utf-8")
+    s = parse_session(p)
+    assert s.session_id == "s4"
+    assert [t.text for t in s.user_turns] == ["正常"]
+
+
+def test_null_text_block_does_not_crash(tmp_path):
+    """text block 的 text 为 null 时不得 "".join 到 None 炸解析；视同无文本、不计真人轮次。"""
+    lines = [
+        {"type": "user", "sessionId": "s5", "cwd": "/r", "timestamp": "2026-06-01T00:00:00Z",
+         "message": {"content": [{"type": "text", "text": None}]}},
+        {"type": "user", "uuid": "u2", "timestamp": "2026-06-01T00:01:00Z",
+         "message": {"content": [{"type": "text", "text": "真实输入"}]}},
+    ]
+    p = tmp_path / "s5.jsonl"
+    p.write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
+    s = parse_session(p)
+    assert [t.text for t in s.user_turns] == ["真实输入"]
+
+
+def test_non_int_token_value_does_not_crash(tmp_path):
+    """usage 里的非整数 token 值不得 `int += str` 炸整场；安全归零，其余字段照常累加。"""
+    lines = [
+        {"type": "assistant", "sessionId": "s6", "cwd": "/p", "timestamp": "2026-06-01T00:00:00Z",
+         "message": {"model": "m", "usage": {"input_tokens": "NaN", "output_tokens": 5},
+                     "content": []}},
+    ]
+    p = tmp_path / "s6.jsonl"
+    p.write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
+    s = parse_session(p)
+    assert s.token_usage["m"]["input"] == 0 and s.token_usage["m"]["output"] == 5
+
+
 def test_parse_timestamp_non_string_returns_none():
     from ai_coding_insights.timeutil import parse_timestamp
     assert parse_timestamp(12345) is None

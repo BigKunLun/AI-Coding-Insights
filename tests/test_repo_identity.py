@@ -30,6 +30,14 @@ def test_matches_github_requires_org():
     assert not matches(RemoteIdentity("github.com", "someone-else"), rules)  # 私人 repo 不命中
 
 
+def test_matches_org_case_insensitive():
+    # org 名平台层不区分大小写：规则与远程存储大小写不一致不应漏纳公司会话
+    rules = [RemoteRule("github.com", "Example-Org")]
+    assert matches(RemoteIdentity("github.com", "example-org"), rules)
+    assert matches(RemoteIdentity("github.com", "EXAMPLE-ORG"), rules)
+    assert not matches(RemoteIdentity("github.com", "someone-else"), rules)  # 仍不误纳私人 repo
+
+
 RULES = [RemoteRule("git.example.com"), RemoteRule("github.com", "example-org")]
 
 

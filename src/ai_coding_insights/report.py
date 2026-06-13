@@ -177,14 +177,21 @@ def _render_daily_heatmap(daily: list | None, idx: int) -> str:
     from datetime import date as date_type, timedelta
     data_map = {}
     for d in daily:
-        data_map[d["date"]] = d["session_count"]
+        if not isinstance(d, dict):
+            continue
+        dt = d.get("date")
+        if isinstance(dt, str) and dt:
+            data_map[dt] = d.get("session_count", 0)
 
     if not data_map:
         return ""
 
     dates = sorted(data_map)
-    first = date_type.fromisoformat(dates[0])
-    last = date_type.fromisoformat(dates[-1])
+    try:
+        first = date_type.fromisoformat(dates[0])
+        last = date_type.fromisoformat(dates[-1])
+    except ValueError:
+        return ""   # 日期串异常 → 热力图整段降级为不渲染，不连累整张报告
 
     # 从 first 所在的周一开始，到 last 所在的周日结束
     start = first - timedelta(days=first.weekday())
@@ -262,7 +269,7 @@ def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
     def _bar_items(counts: dict, top_n: int = 15) -> tuple[list, float]:
         if not counts:
             return [], 0.0
-        items = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        items = sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:top_n]  # 同计数按名排序，避免跨进程顺序不定
         mx = items[0][1] if items else 1
         return items, float(mx)
 
@@ -351,9 +358,11 @@ def _ptr_chip(entry: dict, projects: list) -> str:
     sid = stem[:8]
     parent = path_part.rsplit("/", 2)[-2] if "/" in path_part else ""
     label = sid
-    for p in projects or []:
+    for i, p in enumerate(projects or []):
         if parent and parent == _encode_cwd(p):
-            label = f"{str(p).rstrip('/').rsplit('/', 1)[-1]} · {sid}"
+            # 不把项目目录名（含产品/客户名）渲染进可见报告——项目名属敏感信息（快照
+            # 同样剥离，见 cli 落盘脱敏）。用稳定序号分组，保留「哪个项目」而不泄名。
+            label = f"项目{i + 1} · {sid}"
             break
     miss = ' <span class="ptr-miss">⚠ 指针未命中</span>' if entry.get("pointer_missing") else ""
     return (f'<span class="ptr-chip" title="{escape(pointer)}">{escape(label)} ↗</span>{miss}')
@@ -407,8 +416,13 @@ def _render_health_section(health: dict | None, idx: int) -> str:
     span = health.get("cc_version_span") or {}
     flags = health.get("drift_flags") or []
     unknown = health.get("unknown_record_types") or []
+    # parse_health 恒为非空骨架 dict，单凭 `if not health` 不足以省略空段：无版本信息、
+    # 无漂移、无未知类型时整段无内容可言，按 docstring「为空→空串」不占章节号。
+    if not span.get("min") and not flags and not unknown:
+        return ""
     span_txt = (f'数据横跨 CC {escape(str(span.get("min")))}–{escape(str(span.get("max")))}'
-                f'（{int(span.get("distinct", 0))} 个版本）') if span.get("min") else "版本信息缺失"
+                f'（{int(span.get("distinct", 0))} 个版本）'
+                if span.get("min") and span.get("max") else "版本信息缺失")
     body = f'<div class="health-span">{span_txt}</div>'
     if flags:
         rows = "".join(
@@ -438,7 +452,7 @@ def _token_items(token_usage: dict | None) -> list[tuple[str, float]] | None:
     items = [(str(name), _fnum((b or {}).get("output"))) for name, b in token_usage.items()]
     if not items or max(o for _, o in items) <= 0:
         return None
-    items.sort(key=lambda t: t[1], reverse=True)
+    items.sort(key=lambda t: (-t[1], t[0]))  # 同 output 按模型名排序，保证可复现顺序
     return items
 
 
@@ -645,9 +659,16 @@ def render_profile_report(profile: dict, meta: dict,
     git_landed = mval("git_landed_count",
                       mval("landed_count", o_landed if o_total else None))
     _cc, _lc = mval("commit_count"), mval("landed_count")
-    dropped = mval("dropped_count",
-                   max(0, int(_cc) - int(_lc)) if _cc is not None and _lc is not None
-                   else ((o_total - o_landed) if o_total else None))
+
+    def _dropped_fallback():
+        # 硬证据兜底 commit-landed；非数值（脏/漂移 metrics）时退到 LLM outcome，不炸整张报告
+        if _cc is not None and _lc is not None:
+            try:
+                return max(0, int(_cc) - int(_lc))
+            except (TypeError, ValueError):
+                pass
+        return (o_total - o_landed) if o_total else None
+    dropped = mval("dropped_count", _dropped_fallback())
 
     def num(v):
         return "—" if v is None else escape(str(v))

@@ -61,3 +61,19 @@ def test_drift_cliff_skips_thin_buckets():
     new = [_ps("2.1.172", plan=0) for _ in range(3)]
     h = compute_parse_health(old + new)
     assert h["drift_flags"] == []
+
+
+def test_same_version_does_not_false_flag_drift():
+    # 30 个会话全在同一版本，但前 15 有 plan、后 15 无——旧的「会话序中点」切分会把
+    # 同一版本内的采样差异误报成版本漂移。按版本边界切分：单一版本不可能漂移。
+    sessions = ([_ps("2.1.158", plan=1) for _ in range(15)]
+                + [_ps("2.1.158", plan=0) for _ in range(15)])
+    h = compute_parse_health(sessions)
+    assert h["drift_flags"] == []
+
+
+def test_new_fragile_signals_watched():
+    # 雷达必须监视新增的易碎信号（最依赖内部嵌套形态、最易随版本静默失效）
+    h = compute_parse_health([_ps("2.1.150")])
+    for sig in ("optionpick", "skill", "mcp", "background", "parallel"):
+        assert sig in h["signal_presence"], sig

@@ -14,7 +14,10 @@ KNOWN_RECORD_TYPES = {
     "ai-title", "worktree-state", "agent-name",
 }
 
-# 信号存在性谓词：从 ParsedSession 字段派生
+# 信号存在性谓词：从 ParsedSession 字段派生。
+# 雷达必须覆盖**最新、最依赖内部嵌套形态**的提取（option_pick 的 answers dict、
+# Skill.input.skill、mcp__server__tool 命名、run_in_background、并行 Agent）——它们正是
+# CC 版本一变最易静默失效的；只盯老的稳定信号 = 在最该报警的维度上失明。
 _SIGNAL_PREDS = {
     "humanturn": lambda s: bool(s.user_turns),
     "model": lambda s: bool(s.models_used),
@@ -24,6 +27,11 @@ _SIGNAL_PREDS = {
     "gitop": lambda s: bool(s.commits),
     "edit": lambda s: s.edit_count > 0,
     "plan": lambda s: s.plan_mode_count > 0,
+    "optionpick": lambda s: s.option_pick_count > 0,
+    "skill": lambda s: bool(s.skill_names),
+    "mcp": lambda s: bool(s.mcp_servers),
+    "background": lambda s: s.background_task_count > 0,
+    "parallel": lambda s: s.parallel_agent_turns > 0,
 }
 
 
@@ -65,14 +73,18 @@ def compute_parse_health(sessions, min_bucket: int = 10,
     presence = {sig: (sum(1 for s in sessions if pred(s)) / n if n else 0.0)
                 for sig, pred in _SIGNAL_PREDS.items()}
 
-    # -- 断崖检测：按会话版本排序，前半 vs 后半，只报「掉」--
+    # -- 断崖检测：按「版本边界」切分老/新两段，只报「掉」--
     drift_flags: list = []
     stamped = [(v, s) for s in sessions if (v := _session_version(s))]
-    if len(stamped) >= 2 * min_bucket:
-        stamped.sort(key=lambda x: _version_key(x[0]))
-        mid = len(stamped) // 2
-        older = [s for _, s in stamped[:mid]]
-        newer = [s for _, s in stamped[mid:]]
+    distinct = sorted({v for v, _ in stamped}, key=_version_key)
+    if len(stamped) >= 2 * min_bucket and len(distinct) >= 2:
+        # 切点必须落在版本边界、而非会话序中点：否则当某主版本会话数过半时，它会同时
+        # 横跨前后两段，把同一版本内的采样波动误报成「版本漂移」。按 distinct 版本列表
+        # 中点划分，保证同一版本只属于一段。
+        vmid = len(distinct) // 2
+        older_vers = set(distinct[:vmid])
+        older = [s for v, s in stamped if v in older_vers]
+        newer = [s for v, s in stamped if v not in older_vers]
         if len(older) >= min_bucket and len(newer) >= min_bucket:
             for sig, pred in _SIGNAL_PREDS.items():
                 old_rate = sum(1 for s in older if pred(s)) / len(older)

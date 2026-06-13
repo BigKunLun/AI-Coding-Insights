@@ -26,3 +26,11 @@ def test_io_error_is_silent(tmp_path):
     parent_is_file.write_text("x", encoding="utf-8")
     bad = parent_is_file / "sub" / "auto.log"
     append_rolling_log(bad, "whatever")   # 不得抛异常
+
+
+def test_invalid_utf8_read_is_silent(tmp_path):
+    # 日志文件含非法 UTF-8 时 read_text 抛 UnicodeDecodeError(属 ValueError 非 OSError)——
+    # 旧的 except OSError 接不住，会逃逸成后台 hook 的 traceback。须静默吞掉。
+    log = tmp_path / "auto-scan.log"
+    log.write_bytes(b"\xff\xfe bad bytes not utf8")
+    append_rolling_log(log, "新一行")   # 不得抛异常

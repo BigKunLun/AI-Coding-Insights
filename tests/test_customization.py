@@ -61,6 +61,17 @@ def test_detect_hook_config_invalid_json(tmp_path):
     assert result["has_hooks"] is False
 
 
+def test_detect_hook_config_empty_event_not_counted(tmp_path):
+    # 声明但为空的 hook 段（CC 容许的遗留）不应被算作启用 hook 自动化
+    cfg = {"hooks": {"SessionStart": [],
+                     "SessionEnd": [{"hooks": [{"type": "command", "command": "x"}]}]}}
+    p = tmp_path / "settings.json"
+    p.write_text(json.dumps(cfg))
+    result = detect_hook_config(str(p))
+    assert result["hook_events"] == ["SessionEnd"]   # 空的 SessionStart 不计
+    assert result["has_hooks"] is True
+
+
 def test_compute_customization_signals_all_present():
     result = compute_customization_signals(
         custom_skill_names=["deploy", "lint"],

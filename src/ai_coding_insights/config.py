@@ -64,6 +64,9 @@ def parse_config(data: dict) -> Config:
     bt = data.get("business_terms", [])
     if not isinstance(bt, list):
         raise ConfigError("business_terms 必须是字符串列表（如 [\"词1\", \"词2\"]）")
+    for _k in ("lookback_days", "short_turn_max_chars"):
+        if isinstance(data.get(_k), bool):   # int(True)==1 不会被下面的 int() 拦下，须先挡
+            raise ConfigError(f"{_k} 必须是整数，不能是布尔值（得到 {data[_k]!r}）")
     try:
         lookback = int(data.get("lookback_days", 30))
         short_max = int(data.get("short_turn_max_chars", 6))

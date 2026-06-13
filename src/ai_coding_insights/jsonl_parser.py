@@ -3,6 +3,12 @@ from pathlib import Path
 from .models import ParsedSession, UserTurn, CommitRef
 
 
+def _as_int(v) -> int:
+    # token 计数偶有非 int（脏记录里的字符串等）：`int += 非int` 会炸整场会话解析，
+    # 统一安全归零（bool 是 int 子类，显式排除避免 True 被当 1 计）。
+    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+
+
 def extract_text(content) -> str | None:
     # §5 真人/工具回执判别的承重点。判别逻辑：
     # 含任意 tool_result block → None（工具回包，非真人轮次）；
@@ -14,8 +20,11 @@ def extract_text(content) -> str | None:
     if isinstance(content, list) and content:
         if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
             return None
-        parts = [b.get("text", "") for b in content
-                 if isinstance(b, dict) and b.get("type") == "text"]
+        # 仅收字符串型 text：个别记录的 text 可能是 null/非字符串，"".join 到 None 会
+        # TypeError 炸整场解析（本函数在逐行 try 之外）。非字符串 text 视同无文本内容。
+        parts = [t for b in content
+                 if isinstance(b, dict) and b.get("type") == "text"
+                 and isinstance(t := b.get("text"), str)]
         if parts:
             return "".join(parts)
     return None
@@ -82,13 +91,16 @@ def parse_session(path) -> ParsedSession:
                 line = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            if isinstance(line, dict):
-                rt = line.get("type")
-                if isinstance(rt, str):
-                    record_type_counts[rt] = record_type_counts.get(rt, 0) + 1
-                ver = line.get("version")
-                if isinstance(ver, str) and ver:
-                    versions.add(ver)
+            # 裸值行（json.loads 得数组/字符串/数字）无会话语义；提前跳过——否则下方
+            # 各处 line.get(...) 会 AttributeError 炸掉整场会话解析（曾仅在收集分支加守卫）。
+            if not isinstance(line, dict):
+                continue
+            rt = line.get("type")
+            if isinstance(rt, str):
+                record_type_counts[rt] = record_type_counts.get(rt, 0) + 1
+            ver = line.get("version")
+            if isinstance(ver, str) and ver:
+                versions.add(ver)
             if line.get("type") in ("user", "assistant"):
                 session_id = session_id or line.get("sessionId")
                 cwd = cwd or line.get("cwd")
@@ -118,10 +130,10 @@ def parse_session(path) -> ParsedSession:
                 if model and model != "<synthetic>" and isinstance(usage, dict):
                     bucket = token_usage.setdefault(model, {
                         "input": 0, "output": 0, "cache_read": 0, "cache_creation": 0})
-                    bucket["input"] += usage.get("input_tokens") or 0
-                    bucket["output"] += usage.get("output_tokens") or 0
-                    bucket["cache_read"] += usage.get("cache_read_input_tokens") or 0
-                    bucket["cache_creation"] += usage.get("cache_creation_input_tokens") or 0
+                    bucket["input"] += _as_int(usage.get("input_tokens"))
+                    bucket["output"] += _as_int(usage.get("output_tokens"))
+                    bucket["cache_read"] += _as_int(usage.get("cache_read_input_tokens"))
+                    bucket["cache_creation"] += _as_int(usage.get("cache_creation_input_tokens"))
                 agent_in_msg = 0      # 本条 message 内并发派出的 Agent 数（真并行度）
                 for b in msg.get("content") or []:
                     if not isinstance(b, dict):

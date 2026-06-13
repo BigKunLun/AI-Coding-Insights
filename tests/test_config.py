@@ -99,6 +99,14 @@ def test_parse_non_integer_lookback_raises():
         parse_config({"lookback_days": "abc"})
 
 
+def test_parse_bool_lookback_raises():
+    # int(True)==1 不会被 int() 拦下：lookback_days = true 会静默缩成 1 天窗口，必须响
+    with pytest.raises(ConfigError):
+        parse_config({"lookback_days": True})
+    with pytest.raises(ConfigError):
+        parse_config({"short_turn_max_chars": False})
+
+
 def test_discovery_rules_derivation():
     # discover_sessions 的 rules 参数语义：include 给规则，all 给 None（跳过归属判定）
     inc = parse_config(RULES_TOML)

@@ -41,7 +41,9 @@ def detect_run_model(session_id, projects_dir: Path) -> str | None:
             with p.open("rb") as f:
                 f.seek(max(0, p.stat().st_size - _TAIL_BYTES))
                 tail = f.read().decode("utf-8", errors="replace")
-            return extract_run_model(tail.splitlines())
+            # 只按 \n 切（与 parser 一致）：splitlines 会在粘贴内容的 U+2028/2029/0085
+            # 处误断，把单条记录打碎，可能错配出过期/错误的模型名。
+            return extract_run_model(tail.split("\n"))
     except OSError:
         pass
     return None
