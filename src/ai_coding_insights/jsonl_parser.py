@@ -88,6 +88,12 @@ def parse_session(path) -> ParsedSession:
                 if isinstance(ts, str) and ts:  # 非字符串 timestamp 视为缺失，避免 min/max 比较类型炸
                     first_ts = ts if first_ts is None else min(first_ts, ts)
                     last_ts = ts if last_ts is None else max(last_ts, ts)
+            # plan mode 多形状：permission-mode 记录的 permissionMode=="plan"
+            # 是新版本 CC 的 plan 信号形状（旧的 EnterPlanMode/ExitPlanMode tool_use 在
+            # assistant 分支已计）。两者并集——经验上几乎不重叠（permission-mode:plan
+            # 与 EnterPlanMode tool_use 分属不同版本），偶发重叠的轻微多计可接受。
+            if line.get("type") == "permission-mode" and line.get("permissionMode") == "plan":
+                plan_mode_count += 1
             if is_human_turn(line):
                 msg = _msg_dict(line)
                 user_turns.append(UserTurn(

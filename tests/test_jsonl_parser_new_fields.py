@@ -259,3 +259,30 @@ def test_parallel_agents_zero_when_no_agent(tmp_path):
     s = parse_session(tmp_path / "test.jsonl")
     assert s.max_parallel_agents == 0
     assert s.parallel_agent_turns == 0
+
+
+# ---- plan_mode 多形状：permission-mode:plan 记录（新版本 CC 的 plan 信号）----
+
+def test_plan_mode_from_permission_mode_record(tmp_path):
+    """permission-mode:plan 记录计入 plan_mode_count（新版本 CC 的 plan 形状）。"""
+    lines = [
+        {"type": "permission-mode", "sessionId": "s1", "permissionMode": "plan"},
+        {"type": "permission-mode", "sessionId": "s1", "permissionMode": "plan"},
+        {"type": "assistant", "sessionId": "s1",
+         "message": {"model": "claude-1", "content": [
+             {"type": "tool_use", "name": "EnterPlanMode", "id": "t1", "input": {}}]},
+         "timestamp": "2025-01-01T10:01:00Z"},
+    ]
+    _write_jsonl(lines, tmp_path / "t.jsonl")
+    s = parse_session(tmp_path / "t.jsonl")
+    assert s.plan_mode_count == 3   # 2 条 permission-mode:plan + 1 个 EnterPlanMode（并集）
+
+
+def test_permission_mode_non_plan_not_counted(tmp_path):
+    lines = [
+        {"type": "permission-mode", "sessionId": "s1", "permissionMode": "auto"},
+        {"type": "permission-mode", "sessionId": "s1", "permissionMode": "bypassPermissions"},
+    ]
+    _write_jsonl(lines, tmp_path / "t.jsonl")
+    s = parse_session(tmp_path / "t.jsonl")
+    assert s.plan_mode_count == 0
