@@ -16,6 +16,7 @@ from .profile_schema import validate_profile
 from .obs_check import check_obs_coverage, check_posture_counts, sum_posture_counts
 from .evidence_check import extract_turn_uuids, flag_missing_pointers
 from .run_model import detect_run_model
+from .rolling_log import append_rolling_log
 from .stage import assemble_posture
 from .report import render_count_report, render_profile_report
 from .models import InsightsReport
@@ -381,9 +382,13 @@ def _cmd_auto_scan(args) -> int:
     Lock file 防重入：同一天只执行一次；失败静默退出不打扰用户。
     """
 
-    lock_dir = Path.home() / ".ai-coding-insights"
-    lock_dir.mkdir(parents=True, exist_ok=True)
-    lock_file = lock_dir / ".auto-scan.lock"
+    # state 目录（lock + 滚动日志）默认在 home，--state-dir 可注入（测试 hermetic、
+    # 也便于团队改放统一位置）。
+    state_dir = (Path(args.state_dir) if getattr(args, "state_dir", None)
+                 else Path.home() / ".ai-coding-insights")
+    state_dir.mkdir(parents=True, exist_ok=True)
+    lock_file = state_dir / ".auto-scan.lock"
+    log_file = state_dir / "auto-scan.log"
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # 检查 lock file
@@ -406,6 +411,7 @@ def _cmd_auto_scan(args) -> int:
     # 执行扫描 + 渲染
     try:
         now = datetime.now(timezone.utc)
+        append_rolling_log(log_file, f"{now.isoformat()} start day={today_str}")
         cfg = load_config(resolve_config_path(args.config, args.plugin_root))
         days = args.days or cfg.lookback_days
 
@@ -425,11 +431,13 @@ def _cmd_auto_scan(args) -> int:
             date.fromisoformat(prev_generated[:10]) if prev_generated else None,
             now.date())
         if window_decision.status in ("too_soon",):
+            append_rolling_log(log_file, f"{now.isoformat()} skip too_soon")
             return 0
 
         sessions = discover_sessions(Path(args.projects_dir), cfg.discovery_rules,
                                      days, now, since=since)
         if not sessions:
+            append_rolling_log(log_file, f"{now.isoformat()} skip empty-scan (游标不推进)")
             return 0
 
         stats = [compute_stats(s, cfg.short_turn_max_chars) for s in sessions]
@@ -490,9 +498,16 @@ def _cmd_auto_scan(args) -> int:
                       {"lookback_days": days, "status": window_decision.status,
                        "truncated": False, "mode": cfg.mode},
                       dir=Path(args.snapshot_dir))
-    except Exception:
+        append_rolling_log(log_file,
+                           f"{now.isoformat()} ok sessions={len(sessions)} -> {out_file}")
+    except Exception as exc:
+        # 对用户仍静默退出（不打扰主流程），但真实异常类型+消息落滚动日志，
+        # 让「auto-scan 静默失效」这类问题从此可诊断（上次正是因无日志而长期不可见）。
+        append_rolling_log(log_file,
+                           f"{datetime.now(timezone.utc).isoformat()} "
+                           f"ERROR {type(exc).__name__}: {exc}")
         print(f"auto-scan 执行失败，跳过本次自动评估", file=sys.stderr)
-        return 0  # 异常静默退出（不打扰用户主流程）
+        return 0
 
     return 0
 
@@ -541,6 +556,7 @@ def main(argv=None) -> int:
     au.add_argument("--projects-dir", default=str(Path.home()/".claude"/"projects"))
     au.add_argument("--days", type=int, default=None)
     au.add_argument("--snapshot-dir", default=str(DEFAULT_SNAPSHOT_DIR))
+    au.add_argument("--state-dir", default=None)   # lock + 滚动日志目录；缺省 ~/.ai-coding-insights
     # 向后兼容：Plan 1 的 SKILL.md 调用无子命令（如 `--config X --out Y`）。
     # argparse 子命令模式下，若 argv 首个 token 不是已知子命令，顶层 parse_args 会
     # 把后续 option 的取值误判为子命令选择并直接 SystemExit，根本到不了下面的
