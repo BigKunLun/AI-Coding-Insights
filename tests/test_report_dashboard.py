@@ -335,7 +335,7 @@ def test_report_outcome_uses_git_anchor():
     html = render_profile_report(_profile(), _meta(), m, None)
     assert "落地提交" in html
     assert "观测丢弃" in html
-    assert "≈5" in html          # 编辑/落地 = 40/8
+    assert "编辑数" in html and "编辑/落地" not in html  # 原值在；跨口径派生比率（40/8）已撤
 
 
 def test_trend_hides_commit_rows_when_unobservable():

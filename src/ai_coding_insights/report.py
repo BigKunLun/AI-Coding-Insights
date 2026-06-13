@@ -13,7 +13,7 @@ _RADAR_DEPTH_FULL_TURNS = 20.0  # P90 轮次 20 打满（取 P90 后上限上浮
 # ════ 样式约定（与设计稿一一对应）════
 # 背景      页面 #f3f5fa · 卡片 #fff · 卡片描边 #e1e5ef · 卡内分隔 #eef0f5
 # 横幅      linear-gradient(120deg,#0b1026,#18204a) + 青/紫角部微光 + 底部 3px 渐变 keyline
-# 文字      标题 #101828 · 正文 #344054 · 次级 #475467 · 弱化 #7d8694
+# 文字      标题 #101828 · 正文 #344054 · 次级 #475467 · 弱化 #667085
 # 色彩职责  数据序列(姿势 L1→L4): #c7eaf4 → #76c7e6 → #6e8ef2 → #4640d9
 #           指标族: 产出落地 #0d9488 · 协作编排 #4f46e5 · 节奏投入 #7c3aed
 #           达标✓: #15803d · 建议动作: #b45309/#fdeac2 · 链接/指针: #0e7490
@@ -149,7 +149,7 @@ def _render_trend_section(trend: dict | None, idx: int) -> str:
             name = f"{name}（次/会话）"
             a_txt, b_txt = f"{a:.2f}", f"{b:.2f}"
         arrow = _trend_arrow(a, b)
-        arrow_color = {"↑": "#4f46e5", "↓": "#0e7490"}.get(arrow, "#7d8694")
+        arrow_color = {"↑": "#4f46e5", "↓": "#0e7490"}.get(arrow, "#667085")
         rows_html += (
             f'<tr><td class="t-name">{name}</td><td class="t-a">{a_txt}</td>'
             f'<td class="t-b">{b_txt}</td>'
@@ -551,7 +551,7 @@ def _fmt_delta(d: dict) -> str:
     arrow = d.get("arrow", "→")
     delta = d.get("delta", 0)
     # 方向中性呈现，不评判好坏：↑ 靛蓝，↓ 深青，→ 弱化灰（与趋势表同口径）。
-    color = {"↑": "#4f46e5", "↓": "#0e7490"}.get(arrow, "#7d8694")
+    color = {"↑": "#4f46e5", "↓": "#0e7490"}.get(arrow, "#667085")
     mag_val = abs(delta)
     # 按数值（而非类型）区分整数与小数：整数（含 6.0）显示整数，
     # 非整数小数（如 0.046）显示两位小数，避免比率 delta 被截成误导的 0。
@@ -712,8 +712,8 @@ def render_profile_report(profile: dict, meta: dict,
     )
 
     # ---- 01 指标明细：三族，不重复横幅四数 ----
-    edits_per_landed = ("—" if not (edit_count and git_landed)
-                        else f"≈{round(float(edit_count) / float(git_landed))}")
+    # 不渲染「编辑/落地」派生比率：edit_count 是全会话编辑量、git_landed 是 git 锚落地数，
+    # 跨口径相除（分子分母分属不同总体）无 per-commit 语义。只陈列两个原值。
     token_usage = m.get("token_usage") or {}
     model_switch = num(len(token_usage) if token_usage else None)
     families = [
@@ -723,7 +723,6 @@ def render_profile_report(profile: dict, meta: dict,
             ("观测丢弃", num(None if dropped is None else int(dropped)),
              diff_html("dropped_count")),
             ("编辑数", num(edit_count), diff_html("edit_count")),
-            ("编辑/落地", edits_per_landed, ""),
         ]),
         ("协作编排", "#4f46e5", "#4338ca", [
             ("SubAgent 会话", num(mval("subagent_sessions")), diff_html("subagent_sessions")),
@@ -972,7 +971,7 @@ def render_profile_report(profile: dict, meta: dict,
     tsm_appendix = _render_tool_skill_mcp_appendix(
         m.get("tool_session_counts"), m.get("skill_counts"), m.get("mcp_server_counts"))
     appendix = (
-        '<div class="sec"><span class="sec-num" style="color:#7d8694">附录</span>'
+        '<div class="sec"><span class="sec-num" style="color:#667085">附录</span>'
         '<span class="sec-title">明细数据</span>'
         '<span class="sec-hint">默认折叠，点开查看</span></div>'
         + token_block + tsm_appendix + evidence_block
@@ -1009,7 +1008,7 @@ b{{font-weight:700}}
 .hero-inner{{max-width:960px;margin:0 auto}}
 .hero-top{{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}}
 .kicker{{font-size:14px;font-weight:600;color:#9aa6c8;letter-spacing:1px}}
-.hero-meta{{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;color:#5f6b8f}}
+.hero-meta{{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;color:#8893b8}}
 .hero-bottom{{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
   flex-wrap:wrap;margin-top:22px}}
 .stage-big{{font-size:38px;font-weight:700;letter-spacing:-.5px;line-height:1.1}}
@@ -1027,10 +1026,10 @@ b{{font-weight:700}}
 .sec-first{{margin-top:0}}
 .sec-num{{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;font-weight:700}}
 .sec-title{{font-size:15px;font-weight:700;color:#101828}}
-.sec-hint{{font-size:12.5px;color:#7d8694}}
+.sec-hint{{font-size:12.5px;color:#667085}}
 .card{{background:#fff;border:1px solid #e1e5ef;border-radius:12px}}
 .card-title{{font-size:13px;font-weight:700;color:#101828}}
-.fine-note{{font-size:11.5px;color:#98a2b3;line-height:1.6;margin-top:10px}}
+.fine-note{{font-size:11.5px;color:#667085;line-height:1.6;margin-top:10px}}
 .sec-note{{margin-top:10px}}
 .tag{{font-size:11px;font-weight:700;border-radius:5px;padding:2px 8px;
   height:fit-content;white-space:nowrap;flex:0 0 auto}}
@@ -1046,8 +1045,8 @@ b{{font-weight:700}}
 .fam-swatch{{width:8px;height:8px;border-radius:3px;flex:0 0 auto}}
 .m-grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}}
 .m-num{{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.5px}}
-.m-num .unit{{font-size:15px;color:#7d8694}}
-.m-lbl{{font-size:12px;color:#7d8694;margin-top:2px}}
+.m-num .unit{{font-size:15px;color:#667085}}
+.m-lbl{{font-size:12px;color:#667085;margin-top:2px}}
 .delta{{font-weight:700;font-size:.95em;font-family:ui-monospace,'SF Mono',Menlo,monospace;
   font-variant-numeric:tabular-nums}}
 /* ---- 02 高光时刻 ---- */
@@ -1073,8 +1072,8 @@ b{{font-weight:700}}
 .crit-row{{display:flex;justify-content:space-between;gap:10px}}
 .crit-ok{{color:#15803d;font-weight:700;font-variant-numeric:tabular-nums}}
 .crit-miss{{color:#b42318;font-weight:700;font-variant-numeric:tabular-nums}}
-.crit-na{{color:#98a2b3}}
-.crit-gap{{color:#7d8694;font-size:11.5px;font-weight:700;margin-top:4px}}
+.crit-na{{color:#667085}}
+.crit-gap{{color:#667085;font-size:11.5px;font-weight:700;margin-top:4px}}
 .stage-note{{margin-top:auto;padding-top:12px}}
 /* ---- 04 画像 + 详述 ---- */
 .radar-card{{padding:22px;display:grid;grid-template-columns:320px 1fr;gap:8px 26px;
@@ -1087,19 +1086,19 @@ b{{font-weight:700}}
 .dim-name{{font-size:12px;font-weight:700}}
 .dim-val{{font-size:20px;font-weight:700;color:#101828;font-variant-numeric:tabular-nums;
   letter-spacing:-.4px}}
-.dim-unit{{font-size:11.5px;font-weight:500;color:#98a2b3;margin-left:5px}}
-.dim-desc{{font-size:12.5px;color:#7d8694;line-height:1.55}}
+.dim-unit{{font-size:11.5px;font-weight:500;color:#667085;margin-left:5px}}
+.dim-desc{{font-size:12.5px;color:#667085;line-height:1.55}}
 .dim-cards{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}}
 .dim-card{{padding:18px 22px 14px}}
 .dim-card-head{{display:flex;align-items:baseline;gap:8px}}
 .dim-swatch{{width:8px;height:8px;border-radius:3px;flex:0 0 auto;transform:translateY(-1px)}}
 .dim-card-title{{font-size:13.5px;font-weight:700;color:#101828}}
-.dim-card-sub{{font-size:12.5px;color:#7d8694;margin:4px 0 6px 16px}}
+.dim-card-sub{{font-size:12.5px;color:#667085;margin:4px 0 6px 16px}}
 .pt-list{{display:grid}}
 .pt-row{{padding:9px 0;border-bottom:1px solid #eef0f5}}
 .pt-last{{border-bottom:none}}
 .pt-title{{font-size:13px;font-weight:700;color:#101828}}
-.pt-desc{{font-size:12.5px;color:#7d8694;line-height:1.55;margin-top:2px}}
+.pt-desc{{font-size:12.5px;color:#667085;line-height:1.55;margin-top:2px}}
 .depth-card{{padding:18px 22px 22px;margin-top:16px}}
 .depth-sub{{margin-bottom:14px}}
 .depth-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
@@ -1113,12 +1112,12 @@ b{{font-weight:700}}
 /* ---- 07 活动热力 ---- */
 .heatmap{{display:grid;grid-template-rows:auto auto auto;gap:4px;margin-top:8px}}
 .h-mo-row{{display:grid;grid-template-columns:repeat(var(--h-cols),1fr);grid-column:2}}
-.h-mo{{font-size:11px;color:#7d8694;font-weight:600}}
-.h-dow-row{{display:flex;gap:4px;margin-top:2px;font-size:11px;color:#7d8694;font-weight:600}}
+.h-mo{{font-size:11px;color:#667085;font-weight:600}}
+.h-dow-row{{display:flex;gap:4px;margin-top:2px;font-size:11px;color:#667085;font-weight:600}}
 .h-dow{{width:28px;text-align:center}}
 .h-grid{{display:grid;grid-template-columns:repeat(var(--h-cols),28px);gap:4px;margin-top:2px}}
 .h-cell{{width:28px;height:28px;border-radius:4px;cursor:help}}
-.h-legend{{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:11px;color:#7d8694}}
+.h-legend{{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:11px;color:#667085}}
 .h-leg-swatch{{display:inline-block;width:14px;height:14px;border-radius:3px}}
 /* ---- 工具/技能/MCP 附录 ---- */
 .tok-block{{margin-bottom:8px}}
@@ -1139,11 +1138,11 @@ b{{font-weight:700}}
 .health-card{{font-size:13px;line-height:1.7}}
 .health-span{{font-weight:600;color:#0e7490}}
 .health-flag{{margin-top:6px;padding:8px 12px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;color:#991b1b}}
-.health-unknown{{margin-top:8px;color:#7d8694}}
+.health-unknown{{margin-top:8px;color:#667085}}
 /* ---- 07 趋势 / 附录表格 ---- */
 .trend-card{{padding:8px 22px 16px}}
 table.trend{{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}}
-table.trend th{{padding:12px 8px 9px;text-align:left;font-size:12px;color:#7d8694;
+table.trend th{{padding:12px 8px 9px;text-align:left;font-size:12px;color:#667085;
   font-weight:600;border-bottom:1px solid #e1e5ef}}
 table.trend th:first-child{{padding-left:0}}
 table.trend th.num-col{{text-align:right}}
@@ -1164,7 +1163,7 @@ table.trend tbody tr:last-child td{{border-bottom:none}}
 .tok-name{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#475467}}
 .tok-track{{height:12px;border-radius:4px;background:#eef1f6;overflow:hidden}}
 .tok-fill{{height:100%;border-radius:4px}}
-.tok-val{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#101828;font-weight:600}}
+.tok-val{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#101828;font-weight:600;font-variant-numeric:tabular-nums}}
 .tok-note{{margin-top:8px}}
 .tok-table{{margin-top:14px}}
 .tok-table td{{font-size:12.5px}}
@@ -1179,7 +1178,7 @@ table.trend tbody tr:last-child td{{border-bottom:none}}
   white-space:nowrap;cursor:help}}
 /* ---- 页脚 ---- */
 .footer{{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:34px;
-  padding-top:16px;border-top:1px solid #e1e5ef;font-size:11.5px;color:#98a2b3}}
+  padding-top:16px;border-top:1px solid #e1e5ef;font-size:11.5px;color:#667085}}
 .footer-id{{font-family:ui-monospace,'SF Mono',Menlo,monospace}}
 /* ---- 窄屏 / 打印 ---- */
 @media (max-width:720px){{
@@ -1187,6 +1186,9 @@ table.trend tbody tr:last-child td{{border-bottom:none}}
   .posture-grid,.radar-card,.dim-cards,.depth-grid{{grid-template-columns:1fr}}
   .m-grid{{grid-template-columns:repeat(2,1fr)}}
   .hero-nums{{gap:20px;flex-wrap:wrap}}
+  /* 窄屏：固定大像素列会撑破容器/触发横滚——首列可缩、热力图等比缩 */
+  .tok-row{{grid-template-columns:minmax(80px,140px) 1fr 48px;gap:8px}}
+  .h-grid{{grid-template-columns:repeat(var(--h-cols),minmax(0,1fr))}}
 }}
 @media print{{
   .hero{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
