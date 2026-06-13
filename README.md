@@ -122,7 +122,7 @@ flowchart TB
 隐私是定位级铁律，落在机制上而非自觉：
 
 - **不出本机**：会话原文与业务语义永不离开本机；进入报告的姿势 / 证据 / 建议自由文本只描述**行为模式与量级**，绝不含客户 / 功能 / 产品 / 架构等业务内容。
-- **业务标识不进 LLM**：含项目名的数据（cwd 绝对路径、按项目细分）既不进 LLM 上下文、不进 `/tmp` 批次产物、也不进跨次快照；报告里项目只以「项目N」序号出现。
+- **业务标识不进 LLM**：含项目名的数据（cwd 绝对路径、按项目细分）既不进 LLM 上下文、不进中间批次产物、也不进跨次快照；报告里项目只以「项目N」序号出现。
 - **密钥网**：进入 LLM 层（经 Anthropic API）的批次文本，在出规则层前就地脱敏——覆盖 PEM 私钥、JWT、连接串内嵌口令、各厂商 token（OpenAI / Anthropic / GitHub / Slack / AWS / Google）、Bearer 头、带标签的 `api_key`/`password`/`secret` 等，取向宁可过度脱敏。
 - **证据可信**：每条证据指针逐条 IO 回看核验，LLM 编造的路径或拿会话 id 冒充 turn uuid 会在报告中公开标注「指针未命中」；页脚模型名由规则层从 transcript 确定性识别，不采信 LLM 自报。
 - **归属宁漏勿误**：判定不确定的项目一律不纳入，私人会话从机制上进不来。
@@ -133,7 +133,7 @@ flowchart TB
 uv run pytest    # 全量测试（Python ≥3.11，零运行时依赖，dev 仅 pytest）
 
 # 规则层手动调试（正常由 skill 编排调用）
-uv run python -m ai_coding_insights scan --plugin-root . --emit-batches /tmp/aci-batches
+uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-coding-insights/run
 ```
 
 规则层共 5 个子命令：`scan`（扫描 / 分批 / 硬指标）、`init`（交互配置向导）、`verify-obs`（校验 LLM 观测对批次的覆盖与完整性）、`render-profile`（渲染画像 HTML）、`auto-scan`（SessionEnd hook 后台自动评估）——除调试外均由 skill 编排调用。

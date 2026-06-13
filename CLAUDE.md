@@ -14,7 +14,7 @@ uv run pytest tests/test_window.py             # 单文件
 uv run pytest tests/test_window.py::test_xxx   # 单用例
 
 # 规则层手动调试（正常由 skill 编排调用）
-uv run python -m ai_coding_insights scan --plugin-root . --emit-batches /tmp/aci-batches
+uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-coding-insights/run
 ```
 
 零运行时依赖（纯 stdlib），dev 仅 pytest。

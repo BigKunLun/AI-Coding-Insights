@@ -112,7 +112,9 @@ def _emit_batches(args, cfg, now, since) -> int:
     last_date = date.fromisoformat(prev_generated[:10]) if prev_generated else None
     decision = decide_window(last_date, now.date())
 
-    out_dir = Path(args.emit_batches)
+    # 展开 ~：落点已是 home 路径（~/.ai-coding-insights/run），字面 ~ 未经 shell 展开时
+    # 会在 cwd 下造出名为 '~' 的脏目录（同 _write_html 的防护）。
+    out_dir = Path(args.emit_batches).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
     # 清掉上一轮残留：批数变少时旧 batch 会被 verify-obs 误读成覆盖缺口；
     # 旧 obs/profile 不清，批次划分一变，专家会静默读到张冠李戴的数据。
@@ -204,7 +206,7 @@ def _emit_batches(args, cfg, now, since) -> int:
     batches = make_batches(sessions_input)
 
     # project_breakdown 以 cwd 绝对路径（含项目名）做键，LLM 层与渲染均不消费；
-    # 与快照同口径剥离，业务目录名不进入 LLM 上下文与 /tmp 产物。
+    # 与快照同口径剥离，业务目录名不进入 LLM 上下文与中间产物。
     agg = {k: v for k, v in _metrics_dict(metrics).items() if k != "project_breakdown"}
     # 附上定制化信号（不进快照，仅进入 _aggregate.json → 报告渲染）
     agg["customization_signals"] = customization_signals
@@ -227,6 +229,9 @@ def _emit_batches(args, cfg, now, since) -> int:
         "batches": manifest_batches,
         "included_projects": sorted({s.cwd for s in sessions}),
         "plugin_root": args.plugin_root or str(Path.cwd()),
+        # 已展开的绝对中间产物目录，回填给 SKILL：LLM 据此 Write obs/profile、glob obs。
+        # SKILL 不能写死 ~ / ${HOME}（Write 工具不展开，会造出字面 ~ 目录）。
+        "batches_dir": str(out_dir.resolve()),
         "window": window_dict,
         "aggregate": agg,
         "mode": cfg.mode,

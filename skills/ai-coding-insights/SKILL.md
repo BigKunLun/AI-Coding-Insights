@@ -21,9 +21,11 @@ allowed-tools: Bash(uv run *), Bash(date *), Agent, Read, Write
 
 规则层扫描——窗口决策、纳入范围内会话分批、硬指标都已算好，并顺带清掉上一轮的中间产物残留（旧 obs/profile，批次划分一变专家会静默读到张冠李戴的数据）。`aggregate` 是硬指标，`window` 是取数窗口；纳入范围默认全部本机会话，团队配置了 include 模式则只含团队项目：
 
-!`uv run --project ${CLAUDE_PLUGIN_ROOT} python -m ai_coding_insights scan --plugin-root ${CLAUDE_PLUGIN_ROOT} --emit-batches /tmp/aci-batches`
+!`uv run --project ${CLAUDE_PLUGIN_ROOT} python -m ai_coding_insights scan --plugin-root ${CLAUDE_PLUGIN_ROOT} --emit-batches "${HOME}/.ai-coding-insights/run"`
 
 后续步骤里的 `<PLUGIN_ROOT>` 一律取上面清单的 `plugin_root` 字段（运行时 `${CLAUDE_PLUGIN_ROOT}` 是空的，**不要**再用它）。
+
+后续步骤里的 `<BATCHES_DIR>` 一律取上面清单的 `batches_dir` 字段（已是绝对路径，即上面 `--emit-batches` 落地的中间产物目录）。Write obs/profile、glob obs 全用它——**绝不要**写成 `~` 或 `${HOME}` 开头的路径：Write 工具不展开 `~`，会在工作目录下造出一个字面名为 `~` 的目录。
 
 **按此顺序判清单 `status`（逐条匹配，命中即停）：**
 1. `status == "too_soon"`：把 `message` 原样告诉用户后**停止**——不派 subagent、不渲染。
@@ -32,12 +34,12 @@ allowed-tools: Bash(uv run *), Bash(date *), Agent, Read, Write
 
 ## 2. 阶段一 · 提取（每批派一个 extractor）
 
-对清单 `batches` 里**每个** batch 文件，用 **Agent 工具**派一个 extractor（可并行）。prompt（替换 `<BATCH_FILE>` / `<NN>`，`<NN>` 取文件名两位序号）：
+对清单 `batches` 里**每个** batch 文件，用 **Agent 工具**派一个 extractor（可并行）。prompt（替换 `<BATCH_FILE>` / `<NN>` / `<BATCHES_DIR>`，`<NN>` 取文件名两位序号，`<BATCHES_DIR>` 取清单 `batches_dir`）：
 
 ```
 你是 extractor。脱敏铁律：behavior 只描述行为模式，绝不含业务内容（客户/功能/产品/架构）。
 用 Read 读 <BATCH_FILE>（JSON 数组，每元素一个会话：session_id/cwd/file_path/signals/turns，turns 是该会话的完整真人输入，每条有 uuid/chars/text/anchors）。
-通读全部 turns 做两件事，用 Write 写 /tmp/aci-batches/obs-<NN>.json，结构严格如下：
+通读全部 turns 做两件事，用 Write 写 <BATCHES_DIR>/obs-<NN>.json，结构严格如下：
 {"sessions":[
   {"session_id":"...","file_path":"...","signals":<该会话的 signals 原样带上>,
    "posture_counts":{"L1":<n>,"L2":<n>,"L3":<n>,"L4":<n>},
@@ -65,7 +67,7 @@ pointer 的 uuid 必须原样取自该 turn 的 uuid 字段，**绝不能拿 ses
 派完后用 **Bash 工具**运行覆盖校验（`<PLUGIN_ROOT>` 换成清单 `plugin_root`，glob 必须带引号）：
 
 ```
-uv run --project <PLUGIN_ROOT> python -m ai_coding_insights verify-obs --batches /tmp/aci-batches --obs-glob '/tmp/aci-batches/obs-*.json'
+uv run --project <PLUGIN_ROOT> python -m ai_coding_insights verify-obs --batches <BATCHES_DIR> --obs-glob '<BATCHES_DIR>/obs-*.json'
 ```
 
 - `ok`：进入下一步。
@@ -76,7 +78,7 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights verify-obs --batches
 
 ## 3. 阶段二 · 五专家并行（四维度 + 一教练）
 
-用 **Agent 工具**并行派 **5 个专家**。每个先用 **Read** 读**全部** `/tmp/aci-batches/obs-*.json`，结合清单 `aggregate` 产出结论。`aggregate`/`window` 数据**已由第 1 步落盘**为 `/tmp/aci-batches/_aggregate.json` 与 `_window.json`，专家需要时直接 Read——你**不要**再写这两个文件。**脱敏铁律必守。产出结构化字段、不写散文长句。**
+用 **Agent 工具**并行派 **5 个专家**。每个先用 **Read** 读**全部** `<BATCHES_DIR>/obs-*.json`，结合清单 `aggregate` 产出结论。`aggregate`/`window` 数据**已由第 1 步落盘**为 `<BATCHES_DIR>/_aggregate.json` 与 `_window.json`，专家需要时直接 Read——你**不要**再写这两个文件。**脱敏铁律必守。产出结构化字段、不写散文长句。**
 
 **专家共同纪律（写进每个专家的 prompt）**：
 - 产出只通过返回值回传，**不要写任何文件**。
@@ -93,7 +95,7 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights verify-obs --batches
 
 ## 4. 阶段三 · 合成 + 渲染
 
-汇总五专家产出，用 **Write 工具**写 `/tmp/aci-batches/profile.json`（结构严格如下；L1-L4 四档分布由渲染命令直接从 obs 聚合组装，画像里**不含任何姿势字段**）：
+汇总五专家产出，用 **Write 工具**写 `<BATCHES_DIR>/profile.json`（结构严格如下；L1-L4 四档分布由渲染命令直接从 obs 聚合组装，画像里**不含任何姿势字段**）：
 
 ```json
 {"breadth":{"headline":"…","points":["…"],"metrics":[{"label":"…","value":28}],"tools":["…"]},
@@ -110,14 +112,14 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights verify-obs --batches
 然后用 **Bash 工具**运行下面这条**单条**命令（`<PLUGIN_ROOT>` 换成清单 `plugin_root`，`<N>` 换成清单 `aggregate.session_count`，并为清单 `included_projects` 里**每个**项目追加一个 `--project <路径>`）：
 
 ```
-uv run --project <PLUGIN_ROOT> python -m ai_coding_insights render-profile --plugin-root <PLUGIN_ROOT> --profile /tmp/aci-batches/profile.json --metrics /tmp/aci-batches/_aggregate.json --window /tmp/aci-batches/_window.json --obs-glob '/tmp/aci-batches/obs-*.json' --session-count <N> --project <项目1> --project <项目2> --run-started <RUN_STARTED> --run-agents <AGENT_N>
+uv run --project <PLUGIN_ROOT> python -m ai_coding_insights render-profile --plugin-root <PLUGIN_ROOT> --profile <BATCHES_DIR>/profile.json --metrics <BATCHES_DIR>/_aggregate.json --window <BATCHES_DIR>/_window.json --obs-glob '<BATCHES_DIR>/obs-*.json' --session-count <N> --project <项目1> --project <项目2> --run-started <RUN_STARTED> --run-agents <AGENT_N>
 ```
 
 运行元信息两个参数（进报告页脚「本报告由 … 生成 · 运行约 … 分钟 · 编排 … 个 agent」，各自可整体省略，**不确定就省略，不要编造**）：`<RUN_STARTED>` 填第 1 步记下的起始时刻；`<AGENT_N>` 填本次实际派出的 subagent 总数（extractor 含重派 + 5 个专家）。页脚模型名由规则层从会话记录自动识别，**不要传任何模型参数**；不传 `--out`，报告自动落当前工作目录 `aci-report-<日期>.html`，成功时 stdout 最后一行即实际路径。
 
 若 stderr 出现「证据指针未命中」警告：报告已照常生成并在对应证据行标注 ⚠，无需重跑；在小结里如实告知用户哪几条证据指针未能回看。
 
-若 stderr 报「画像校验失败：…」，按提示用 Write 重写 `/tmp/aci-batches/profile.json` 后重跑，最多 3 次。
+若 stderr 报「画像校验失败：…」，按提示用 Write 重写 `<BATCHES_DIR>/profile.json` 后重跑，最多 3 次。
 
 ## 5. 小结
 

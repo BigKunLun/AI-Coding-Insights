@@ -220,6 +220,23 @@ def test_emit_batches_manifest_plugin_root(tmp_path, capsys):
     assert rc == 0
     manifest = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert manifest["plugin_root"] == str(root)
+    # batches_dir 是回填给 SKILL 的绝对路径：LLM 编排据此 Write obs/profile、glob obs，
+    # 不能让 SKILL 写死 ~ 或 ${HOME}（Write 工具不展开会造出字面 ~ 目录）。
+    assert manifest["batches_dir"] == str((tmp_path / "batches").resolve())
+
+
+def test_emit_batches_expands_tilde_in_out_dir(tmp_path, capsys, monkeypatch):
+    # --emit-batches 拿到字面 ~（未经 shell 展开）时必须 expanduser，
+    # 否则在 cwd 下造出名为 '~' 的脏目录、batches_dir 也含字面 ~。
+    monkeypatch.setenv("HOME", str(tmp_path))
+    projects = tmp_path / "projects"; projects.mkdir()
+    rc = main(["scan", "--projects-dir", str(projects), "--plugin-root", str(tmp_path),
+               "--emit-batches", "~/run", "--snapshot-dir", str(tmp_path / "snaps")])
+    assert rc == 0
+    manifest = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert manifest["batches_dir"] == str((tmp_path / "run").resolve())
+    assert "~" not in manifest["batches_dir"]
+    assert (tmp_path / "run").is_dir()
 
 
 def test_emit_batches_cleans_stale_obs_and_profile(tmp_path, capsys):
