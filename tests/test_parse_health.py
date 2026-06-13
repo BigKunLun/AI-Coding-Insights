@@ -31,13 +31,6 @@ def test_unknown_record_types_surfaced():
     assert "user" not in h["unknown_record_types"]   # 已知类型不报
 
 
-def test_signal_presence_rates():
-    sessions = [_ps("2.1.150", thinking=5), _ps("2.1.150", thinking=0)]
-    h = compute_parse_health(sessions)
-    assert h["signal_presence"]["thinking"] == 0.5
-    assert h["signal_presence"]["humanturn"] == 1.0
-
-
 def test_drift_cliff_flags_drop_only():
     # 老段（≤158）plan 普遍存在，新段（≥169）全掉零 → 报漂移
     old = [_ps("2.1.150", plan=1) for _ in range(12)]
@@ -74,6 +67,6 @@ def test_same_version_does_not_false_flag_drift():
 
 def test_new_fragile_signals_watched():
     # 雷达必须监视新增的易碎信号（最依赖内部嵌套形态、最易随版本静默失效）
-    h = compute_parse_health([_ps("2.1.150")])
+    from ai_coding_insights.parse_health import _SIGNAL_PREDS
     for sig in ("optionpick", "skill", "mcp", "background", "parallel"):
-        assert sig in h["signal_presence"], sig
+        assert sig in _SIGNAL_PREDS, sig

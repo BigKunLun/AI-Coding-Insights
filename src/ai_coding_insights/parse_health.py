@@ -1,7 +1,7 @@
 """提取健康度金丝雀（无 IO 纯函数）。
 
 CC transcript 是非稳定内部格式、跨版本会漂移。此模块从已解析的 ParsedSession
-列表派生「提取健康度」：CC 版本跨度、parser 不认识的新记录类型、各信号存在率，
+列表派生「提取健康度」：CC 版本跨度、parser 不认识的新记录类型，
 以及按版本段的「掉零」断崖检测——把「静默漏数」转为「可见可诊断」。
 
 全部信号存在性从 ParsedSession 既有字段派生，不重扫文件。产出无业务语义。
@@ -55,7 +55,6 @@ def compute_parse_health(sessions, min_bucket: int = 10,
                          present_thresh: float = 0.30,
                          absent_thresh: float = 0.02) -> dict:
     """从 ParsedSession 列表派生提取健康度 dict。空输入返回各项空骨架。"""
-    n = len(sessions)
     # -- 版本跨度 --
     all_versions = sorted({v for s in sessions for v in s.cc_versions},
                           key=_version_key)
@@ -68,10 +67,6 @@ def compute_parse_health(sessions, min_bucket: int = 10,
     for s in sessions:
         seen_types.update(s.record_type_counts or {})
     unknown = sorted(seen_types - KNOWN_RECORD_TYPES)
-
-    # -- 信号存在率（全窗）--
-    presence = {sig: (sum(1 for s in sessions if pred(s)) / n if n else 0.0)
-                for sig, pred in _SIGNAL_PREDS.items()}
 
     # -- 断崖检测：按「版本边界」切分老/新两段，只报「掉」--
     drift_flags: list = []
@@ -99,6 +94,5 @@ def compute_parse_health(sessions, min_bucket: int = 10,
     return {
         "cc_version_span": span,
         "unknown_record_types": unknown,
-        "signal_presence": {k: round(v, 3) for k, v in presence.items()},
         "drift_flags": drift_flags,
     }

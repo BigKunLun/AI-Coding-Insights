@@ -504,7 +504,6 @@ def test_report_renders_health_section_with_drift():
     metrics = dict(METRICS_V5, parse_health={
         "cc_version_span": {"min": "2.1.142", "max": "2.1.175", "distinct": 31},
         "unknown_record_types": ["brand-new-type"],
-        "signal_presence": {"thinking": 0.88, "plan": 0.0},
         "drift_flags": [{"signal": "plan", "older_rate": 0.31, "newer_rate": 0.0}],
     })
     html = render_profile_report(PROFILE_V5, META_V5, metrics, DIFF_V5)
