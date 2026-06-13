@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/auto-scan-hook.sh"],
+            "async": true,
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
