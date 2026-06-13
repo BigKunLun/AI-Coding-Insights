@@ -399,6 +399,30 @@ def _render_capabilities_section(tool_session_counts: dict | None, idx: int,
             + f'<div class="card cap-card">{inner}</div>')
 
 
+def _render_health_section(health: dict | None, idx: int) -> str:
+    """数据健康（版本漂移雷达）：版本跨度 + 漂移红标 + 未知记录类型。
+    health 缺失/为空 → 返回空串（不占章节号）。"""
+    if not health:
+        return ""
+    span = health.get("cc_version_span") or {}
+    flags = health.get("drift_flags") or []
+    unknown = health.get("unknown_record_types") or []
+    span_txt = (f'数据横跨 CC {escape(str(span.get("min")))}–{escape(str(span.get("max")))}'
+                f'（{int(span.get("distinct", 0))} 个版本）') if span.get("min") else "版本信息缺失"
+    body = f'<div class="health-span">{span_txt}</div>'
+    if flags:
+        rows = "".join(
+            f'<div class="health-flag">⚠ 信号 <b>{escape(str(f.get("signal")))}</b> '
+            f'疑似版本漂移：老版本段 {float(f.get("older_rate",0)):.0%} → '
+            f'新版本段 {float(f.get("newer_rate",0)):.0%}，提取可能已失效</div>'
+            for f in flags)
+        body += f'<div class="health-flags">{rows}</div>'
+    if unknown:
+        body += ('<div class="health-unknown">未编目的新记录类型（parser 暂不处理，留意是否承载新信号）：'
+                 + escape("、".join(unknown)) + '</div>')
+    return _sec_header(idx, "数据健康") + f'<div class="card health-card">{body}</div>'
+
+
 def _fnum(v) -> float:
     """容错取数：None/非数→0.0。趋势/Token 条形图共用。"""
     try:
@@ -904,6 +928,10 @@ def render_profile_report(profile: dict, meta: dict,
         idx += 1
         sections.append(_render_capabilities_section(m.get("tool_session_counts"), idx,
                                                       customization_signals=m.get("customization_signals")))
+    health_html = _render_health_section(m.get("parse_health"), idx + 1)
+    if health_html:
+        idx += 1
+        sections.append(health_html)
     heatmap_html = _render_daily_heatmap(m.get("daily"), idx + 1)
     if heatmap_html:
         idx += 1
@@ -1081,6 +1109,11 @@ b{{font-weight:700}}
 /* ---- 06 能力盲区 ---- */
 .cap-card{{padding:18px 22px;display:grid;gap:10px}}
 .cap-row{{display:flex;gap:12px;font-size:13.5px;color:#344054;line-height:1.7}}
+/* ---- 06b health 段（版本漂移雷达）---- */
+.health-card{{font-size:13px;line-height:1.7}}
+.health-span{{font-weight:600;color:#0e7490}}
+.health-flag{{margin-top:6px;padding:8px 12px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;color:#991b1b}}
+.health-unknown{{margin-top:8px;color:#7d8694}}
 /* ---- 07 趋势 / 附录表格 ---- */
 .trend-card{{padding:8px 22px 16px}}
 table.trend{{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}}

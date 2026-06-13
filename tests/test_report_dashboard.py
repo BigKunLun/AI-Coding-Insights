@@ -496,3 +496,24 @@ def test_friction_card_without_pointers_renders_clean():
     prof["frictions"] = [{"observation": "观察", "suggestion": "建议", "pointers": []}]
     html = render_profile_report(prof, _meta(), _metrics(), None)
     assert '<div class="fr-ptrs">' not in html   # 空指针不出空容器（CSS 规则恒在，只查 HTML 容器）
+
+
+# ---- 数据健康段（版本漂移雷达）----
+
+def test_report_renders_health_section_with_drift():
+    metrics = dict(METRICS_V5, parse_health={
+        "cc_version_span": {"min": "2.1.142", "max": "2.1.175", "distinct": 31},
+        "unknown_record_types": ["brand-new-type"],
+        "signal_presence": {"thinking": 0.88, "plan": 0.0},
+        "drift_flags": [{"signal": "plan", "older_rate": 0.31, "newer_rate": 0.0}],
+    })
+    html = render_profile_report(PROFILE_V5, META_V5, metrics, DIFF_V5)
+    assert "数据健康" in html
+    assert "2.1.142" in html and "2.1.175" in html
+    assert "plan" in html                 # 漂移信号名出现
+    assert "brand-new-type" in html       # 未知类型出现
+
+
+def test_report_no_health_section_when_absent():
+    html = render_profile_report(PROFILE_V5, META_V5, METRICS_V5, DIFF_V5)
+    assert "数据健康" not in html          # metrics 无 parse_health → 不渲染该段
