@@ -272,6 +272,33 @@ def test_scan_emit_batches_real_data(tmp_path, capsys):
     assert total_sessions == agg["session_count"]
 
 
+import json as _json
+from datetime import datetime, timezone, timedelta
+
+
+def test_emit_batches_writes_parse_health(tmp_path):
+    proj = tmp_path / "projects" / "p1"
+    proj.mkdir(parents=True)
+    ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    lines = [
+        {"type": "user", "sessionId": "s1", "cwd": str(tmp_path), "version": "2.1.158",
+         "uuid": "u1", "timestamp": ts, "message": {"content": "做点事"}},
+        {"type": "assistant", "version": "2.1.158", "timestamp": ts,
+         "message": {"model": "claude-opus-4-8", "content": [
+             {"type": "thinking", "thinking": "x", "signature": "y"}]}},
+    ]
+    (proj / "s1.jsonl").write_text("\n".join(_json.dumps(x) for x in lines), encoding="utf-8")
+    out = tmp_path / "batches"
+    rc = main(["scan", "--plugin-root", str(tmp_path), "--days", "14",
+               "--projects-dir", str(tmp_path / "projects"),
+               "--snapshot-dir", str(tmp_path / "snap"),
+               "--emit-batches", str(out)])
+    assert rc == 0
+    agg = _json.loads((out / "_aggregate.json").read_text(encoding="utf-8"))
+    assert "parse_health" in agg
+    assert agg["parse_health"]["cc_version_span"]["max"] == "2.1.158"
+
+
 def test_scan_emit_batches_empty(tmp_path, capsys):
     # 空数据：projects-dir 指向空目录 → batch_count == 0，仍 print 清单，_aggregate.json 存在。
     empty_projects = tmp_path / "empty_projects"

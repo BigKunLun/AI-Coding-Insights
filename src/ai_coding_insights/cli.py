@@ -17,6 +17,7 @@ from .obs_check import check_obs_coverage, check_posture_counts, sum_posture_cou
 from .evidence_check import extract_turn_uuids, flag_missing_pointers
 from .run_model import detect_run_model
 from .rolling_log import append_rolling_log
+from .parse_health import compute_parse_health
 from .stage import assemble_posture
 from .report import render_count_report, render_profile_report
 from .models import InsightsReport
@@ -194,6 +195,9 @@ def _emit_batches(args, cfg, now, since) -> int:
     agg = {k: v for k, v in _metrics_dict(metrics).items() if k != "project_breakdown"}
     # 附上定制化信号（不进快照，仅进入 _aggregate.json → 报告渲染）
     agg["customization_signals"] = customization_signals
+    # 提取健康度金丝雀（版本漂移雷达）：进 _aggregate.json → 报告渲染；
+    # 纯结构事实（版本/类型/存在率），不进快照、无业务语义。
+    agg["parse_health"] = compute_parse_health(sessions)
     (out_dir / "_aggregate.json").write_text(
         json.dumps(agg, ensure_ascii=False), encoding="utf-8")
 
