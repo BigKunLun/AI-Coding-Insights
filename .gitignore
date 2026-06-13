@@ -1,6 +1,9 @@
 # 本机生成的评估报告（个人产物，不进 git）
 aci-report-*.html
 
+# 本地文档/草稿（不进 git）
+docs/
+
 # Python
 __pycache__/
 *.py[cod]
