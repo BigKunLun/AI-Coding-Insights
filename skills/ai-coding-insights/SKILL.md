@@ -123,4 +123,6 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights render-profile --plu
 
 成功后把渲染命令 stdout 输出的报告路径（当前目录 `aci-report-<日期>.html`）告诉用户，口头小结：**取数窗口（起止 + 天数）+ 取数范围（`window.mode` 为 `all` 时明示「个人模式：全部本机会话」，`include` 时明示「团队模式」）** + 四维画像（姿势分布 + 水平/深度/成果 + landed/total；姿势分布的四档数字以渲染命令 stdout 的「姿势分布: …」行为准（规则层组装），不要用自己估的数）+ **摩擦建议 1-2 个要点** + 「较上次进步」（若有同比）+ **本次编排规模**（如「N 个 extractor + 5 个专家」；subagent 的 token 用量编排端拿不到，不要报数、不要编造）。**小结同守脱敏铁律**。
 
+若 `aggregate.parse_health.drift_flags` 非空：小结须追加提醒——「检测到 N 个信号疑似随 CC 版本漂移（信号名列出），相关维度本窗口数据可能失真，建议核对后修复提取规则」。这是数据可信度的硬前置，不得省略。
+
 若 `window.truncated` 为 `true`，追加提醒：名义窗口自 `since_date` 起，但本机 transcript 实际只保留到 `data_start`（Claude Code 默认 `cleanupPeriodDays=30` 天清理）；建议在 `~/.claude/settings.json` 把 `cleanupPeriodDays` 设为 ≥60，下次测评窗口才完整。
