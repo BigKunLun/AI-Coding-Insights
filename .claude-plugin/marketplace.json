@@ -1,5 +1,6 @@
 {
   "name": "ai-coding-insights",
+  "description": "Local-first Claude Code usage analytics — scan your own sessions into an AI-collaboration profile that never leaves your machine.",
   "owner": {
     "name": "shijianing"
   },
