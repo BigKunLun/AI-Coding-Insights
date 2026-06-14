@@ -837,7 +837,9 @@ def render_profile_report(profile: dict, meta: dict,
     depth = profile.get("depth", {}) or {}
 
     def _headline(block: dict) -> str:
-        return escape(str(block.get("headline") or block.get("summary") or ""))
+        # 返回原文，不在此预转义：唯一消费者是雷达 dim_rows 的 desc，统一过 _hl_nums
+        # （单次 escape）。此处再 escape 会与 _hl_nums 叠加成双重转义。
+        return str(block.get("headline") or block.get("summary") or "")
 
     # 成果代表行附「落地 X · 观测丢弃 Y」（git 主锚口径）。与横幅同源：硬指标优先。
     landed_disp = "—" if git_landed is None else f"{int(git_landed)}"
@@ -1125,12 +1127,12 @@ b{{font-weight:700}}
 .pt-row{{padding:10px 0;border-bottom:1px solid #eef0f5}}
 .pt-last{{border-bottom:none}}
 .pt-line{{font-size:13px;color:#54607a;line-height:1.85}}
-.pt-desc{{font-size:12.5px;color:#667085;line-height:1.55;margin-top:2px}}
+.pt-desc{{font-size:12.5px;line-height:1.55;margin-top:2px}}
 .depth-card{{padding:18px 22px 22px;margin-top:16px}}
 .depth-sub{{margin-bottom:14px}}
 .depth-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
 .depth-cell{{background:#f8f9fc;border-radius:10px;padding:14px 16px}}
-.depth-desc{{font-size:12.5px;color:#475467;line-height:1.65;margin-top:4px}}
+.depth-desc{{font-size:12.5px;line-height:1.65;margin-top:4px}}
 /* ---- 05 摩擦建议 ---- */
 .fr-list{{display:grid;gap:12px}}
 .fr-card{{padding:18px 22px}}

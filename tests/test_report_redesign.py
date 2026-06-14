@@ -62,3 +62,18 @@ def test_dim_points_no_bold_wall_and_highlights_number():
 def test_dim_points_qualitative_no_number_ok():
     html = _dim_points_rows(["质疑成主导姿态，对幻觉有稳定警觉"], "#7c3aed")
     assert "质疑成主导姿态" in html
+
+
+def test_radar_dim_desc_no_double_escape():
+    from ai_coding_insights.report import render_profile_report
+    prof = {
+        "posture_distribution": {"L1": 0.4, "L2": 0.2, "L3": 0.3, "L4": 0.1},
+        "breadth": {"headline": "广度 & 深度 <对比>", "points": []},
+        "depth": {"headline": "h", "points": []},
+        "outcome": {"headline": "h", "points": [], "landed": 1, "total": 2},
+        "evidence": [{"pointer": "/a.jsonl#u", "behavior": "x"}],
+    }
+    meta = {"generated_at": "2026-06-14T09:29:00", "included_projects": [], "run": None}
+    html = render_profile_report(prof, meta, metrics=None)
+    assert "&amp;amp;" not in html          # 不得双重转义
+    assert "&amp;" in html                   # 单次转义后的 & 仍在
