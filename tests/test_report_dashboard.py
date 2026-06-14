@@ -533,3 +533,19 @@ def test_pointer_title_never_leaks_real_project_name():
     assert "Healio" not in html            # 真实项目名任何角落都不出现
     assert enc not in html                 # 编码路径段不出现（含 title 悬停）
     assert 'title="/' not in html          # 没有任何绝对路径直出 title
+
+
+def test_trend_unobservable_half_shows_dash_not_fake_ratio():
+    import re
+    m = copy.deepcopy(METRICS)
+    m["trend"] = {
+        "first_half": {"sessions": 10, "commits": 0, "landed": 0,
+                       "landed_ratio": None, "override": 2, "error": 1, "short_ratio": 0.1},
+        "second_half": {"sessions": 12, "commits": 8, "landed": 6,
+                        "landed_ratio": 0.75, "override": 3, "error": 2, "short_ratio": 0.2},
+    }
+    html = render_profile_report(PROFILE, META, m, None)
+    assert "落地率(观测)" in html                 # 与头部 git 口径「落地率」区分标签
+    row = re.search(r'落地率\(观测\)</td>.*?</tr>', html).group(0)
+    assert "—" in row and "75%" in row            # 前半不可观测显「—」，后半 75%
+    assert "0%" not in row                         # 不把前半渲染成 0% 假值

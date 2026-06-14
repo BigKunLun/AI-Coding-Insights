@@ -117,7 +117,7 @@ def _trend_arrow(a: float, b: float) -> str:
 # 全行无脑↑毫无信息量甚至误导；密度才反映行为变化。会话数基数放表头。
 _TREND_ROWS = [
     ("提交", "commits", "per_session"),
-    ("落地率", "landed_ratio", "ratio"),
+    ("落地率(观测)", "landed_ratio", "ratio"),
     ("纠偏锚点", "override", "per_session"),
     ("报错锚点", "error", "per_session"),
     ("极短输入占比", "short_ratio", "ratio"),
@@ -139,16 +139,21 @@ def _render_trend_section(trend: dict | None, idx: int) -> str:
             # trend 的提交数据来自 transcript 口径：两半全 0 多半是不可观测
             # （如旧版 CC 无 gitOperation 回执），是测不到不是没提交，0% 假行不出。
             continue
-        a_raw, b_raw = _fnum(fh.get(key)), _fnum(sh.get(key))
+        unobserv = False
         if kind == "ratio":
-            a, b = a_raw, b_raw
-            a_txt, b_txt = f"{a:.0%}", f"{b:.0%}"
+            a_o, b_o = fh.get(key), sh.get(key)
+            a, b = _fnum(a_o), _fnum(b_o)
+            # 某半 commits=0 → landed_ratio 为 None（不可观测）：记「—」，不画 0% 假值/假箭头
+            unobserv = a_o is None or b_o is None
+            a_txt = "—" if a_o is None else f"{a:.0%}"
+            b_txt = "—" if b_o is None else f"{b:.0%}"
         else:
+            a_raw, b_raw = _fnum(fh.get(key)), _fnum(sh.get(key))
             a = a_raw / fh_n if fh_n else 0.0
             b = b_raw / sh_n if sh_n else 0.0
             name = f"{name}（次/会话）"
             a_txt, b_txt = f"{a:.2f}", f"{b:.2f}"
-        arrow = _trend_arrow(a, b)
+        arrow = "" if unobserv else _trend_arrow(a, b)
         arrow_color = {"↑": "#4f46e5", "↓": "#0e7490"}.get(arrow, "#667085")
         rows_html += (
             f'<tr><td class="t-name">{name}</td><td class="t-a">{a_txt}</td>'
@@ -164,6 +169,7 @@ def _render_trend_section(trend: dict | None, idx: int) -> str:
         '<th class="dir-col">方向</th></tr></thead>'
         f'<tbody>{rows_html}</tbody></table>'
         '<div class="fine-note">前后半按窗口内实际数据的时间中点切分；计数类指标已按每会话密度归一。'
+        '落地率为会话内提交观测口径（与头部 git 主锚口径不同），某半提交不可观测时记「—」。'
         '箭头只示变化方向，不评判好坏。</div>'
         '</div>'
     )

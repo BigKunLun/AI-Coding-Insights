@@ -68,7 +68,7 @@ def compute_trend(sessions, stats, outcomes) -> dict | None:
         turns = sum(st.turn_count for _, _, st, _ in items)
         shorts = sum(st.short_turn_count for _, _, st, _ in items)
         return {"sessions": n, "commits": commits, "landed": landed,
-                "landed_ratio": landed / commits if commits else 0.0,
+                "landed_ratio": landed / commits if commits else None,
                 "override": override, "error": error,
                 "short_ratio": shorts / turns if turns else 0.0}
 
