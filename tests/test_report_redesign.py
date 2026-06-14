@@ -98,3 +98,12 @@ def test_posture_fullwidth_no_two_col_grid():
     html = render_profile_report(_min_profile(), _min_meta(), metrics=None)
     assert "posture-grid" not in html
     assert "posture-full" in html
+
+
+def test_posture_bseg_white_text_on_l4_regardless_of_position():
+    from ai_coding_insights.report import _POSTURE_COLORS, render_profile_report
+    prof = _min_profile()
+    prof["posture_distribution"] = {"L1": 0.0, "L2": 0.0, "L3": 0.6, "L4": 0.4}
+    html = render_profile_report(prof, _min_meta(), metrics=None)
+    # L4 段即便落在首位也必须白字（按身份着色，非 nth-child 位置）
+    assert f"background:{_POSTURE_COLORS['L4']};color:#ffffff" in html

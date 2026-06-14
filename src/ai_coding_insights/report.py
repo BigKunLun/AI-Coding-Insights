@@ -803,11 +803,6 @@ def render_profile_report(profile: dict, meta: dict,
 
     # ---- 03 姿势分布 + 档位判据 ----
     total_pd = sum(pct(t) for t in ("L1", "L2", "L3", "L4")) or 1.0
-    segs = "".join(
-        f'<span style="width:{pct(t)/total_pd*100:.2f}%;background:{_POSTURE_COLORS[t]}"'
-        f' title="{t} {pct(t):.0%}"></span>'
-        for t in ("L1", "L2", "L3", "L4")
-    )
     legend_html = "".join(
         f'<div class="lg-row"><span class="lg-swatch" style="background:{_POSTURE_COLORS[code]}"></span>'
         f'<span><b class="ink">{code} {name} {pct(code):.0%}</b> · {desc}</span></div>'
@@ -816,9 +811,11 @@ def render_profile_report(profile: dict, meta: dict,
     # 阶段判定只算一次：横幅大字 / 判据卡共用同一结果
     stage = (None if metrics is None
              else decide_stage(pd, m.get("tool_breadth", 0), m.get("landed_ratio", 0.0)))
-    # 大堆叠条：段内嵌百分比；宽度公式与现有 segs 完全一致，只是放大+内嵌文字
+    # 大堆叠条：段内嵌百分比；宽度公式照搬旧 segs（pct(t)/total_pd*100），只是放大+内嵌文字。
+    # 段内文字色按档位身份定（非 DOM 位置）：L1-L3 浅/中底用深字，仅 L4 深底用白字
+    _BSEG_INK = {"L1": "#0e3a4a", "L2": "#0e3a4a", "L3": "#0e3a4a", "L4": "#ffffff"}
     big_segs = "".join(
-        f'<span style="width:{pct(t)/total_pd*100:.2f}%;background:{_POSTURE_COLORS[t]}" '
+        f'<span style="width:{pct(t)/total_pd*100:.2f}%;background:{_POSTURE_COLORS[t]};color:{_BSEG_INK[t]}" '
         f'class="bseg" title="{t} {pct(t):.0%}">{t} {pct(t):.0%}</span>'
         for t in ("L1", "L2", "L3", "L4") if pct(t) > 0
     )
@@ -1109,8 +1106,7 @@ b{{font-weight:700}}
 /* ---- 03 姿势 + 判据 ---- */
 .posture-full{{padding:24px 26px}}
 .stack-big{{display:flex;width:100%;height:44px;border-radius:9px;overflow:hidden;font-size:13px;font-weight:700;margin-top:6px}}
-.bseg{{display:flex;align-items:center;justify-content:center;color:#fff}}
-.bseg:nth-child(1),.bseg:nth-child(2){{color:#0e3a4a}}
+.bseg{{display:flex;align-items:center;justify-content:center}}
 .lg-grid{{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px;margin-top:16px;font-size:12.5px;color:#54607a;line-height:1.5}}
 .crit-cols{{display:flex;gap:30px;margin-top:20px;padding-top:16px;border-top:1px solid #eef0f5;flex-wrap:wrap}}
 .crit-col{{flex:1;min-width:200px}}
