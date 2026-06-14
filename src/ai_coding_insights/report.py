@@ -85,27 +85,8 @@ def _stage_crit_row(crit: dict, values: dict, met: bool) -> str:
             f'{mark}</div>')
 
 
-def _render_stage_panel(st: dict) -> str:
-    """档位判据卡（03 节右栏）：当前档判据全部达标（匹配即满足），
-    距下一档缺口以 ✗ 行列在下方。st 为 decide_stage 返回 dict。"""
-    sv = st.get("values", {}) or {}
-    rows = "".join(_stage_crit_row(c, sv, met=True)
-                   for c in (st.get("criteria") or []))
-    gaps = st.get("gaps") or []
-    if gaps:
-        rows += ('<div class="crit-gap">距下一阶段还差</div>'
-                 + "".join(_stage_crit_row(g, sv, met=False) for g in gaps))
-    return (
-        '<div class="card stage-panel">'
-        f'<div class="card-title">档位判据 · 第 {int(st.get("stage", 1))} 档</div>'
-        f'<div class="crit-list">{rows}</div>'
-        '<div class="fine-note stage-note">阶段判定为软信号自我定位，判据透明可验，不用于考核。</div>'
-        '</div>'
-    )
-
-
 def _render_stage_criteria_inline(st: dict) -> str:
-    """判据横向两栏：已达标（绿✓）/ 距下一档（红✗）。复用 _stage_crit_row，与 _render_stage_panel 同口径。"""
+    """判据横向两栏：已达标（绿✓）/ 距下一档（红✗）。复用 _stage_crit_row。"""
     sv = st.get("values", {}) or {}
     met = "".join(_stage_crit_row(c, sv, met=True) for c in (st.get("criteria") or []))
     gaps = st.get("gaps") or []
@@ -936,40 +917,49 @@ def render_profile_report(profile: dict, meta: dict,
     # ---- 章节按出场顺序连续编号（空板块跳过不占号）----
     sections: list[str] = []
     idx = 1
+    # 01 指标明细
     sections.append(_sec_header(idx, "指标明细", "横幅四数为四维代表值，此处不再重复",
                                 margin_top=False)
                     + f'<div class="card fam-card">{fam_html}</div>')
-    hl_html = _render_highlights_section(profile.get("highlights"), projects, idx + 1)
-    if hl_html:
-        idx += 1
-        sections.append(hl_html)
+    # 02 姿势分布 + 判据
     idx += 1
     sections.append(_sec_header(idx, posture_sec_title) + posture_section_body)
+    # 03 四维画像与维度详述
     idx += 1
     sections.append(
         _sec_header(idx, "四维画像与维度详述") + radar_panel + dim_cards
         + '<div class="fine-note sec-note">维度详述、摩擦建议与证据描述的文字由 LLM 解读生成；'
         '数字以指标卡与表格的硬指标为准。</div>')
+    # 04 摩擦 + 建议
     if fr_items:
         idx += 1
         sections.append(_sec_header(idx, "摩擦 + 建议") + f'<div class="fr-list">{fr_items}</div>')
+    # 05 高光时刻
+    hl_html = _render_highlights_section(profile.get("highlights"), projects, idx + 1)
+    if hl_html:
+        idx += 1
+        sections.append(hl_html)
+    # 06 活动热力
+    timeline_html = _render_daily_timeline(m.get("daily"), idx + 1)
+    if timeline_html:
+        idx += 1
+        sections.append(timeline_html)
+    # 07 窗口内趋势
+    trend_html = _render_trend_section(m.get("trend"), idx + 1)
+    if trend_html:
+        idx += 1
+        sections.append(trend_html)
+    # 08 能力盲区
     if metrics is not None:
         idx += 1
         sections.append(_render_capabilities_section(m.get("tool_session_counts"), idx,
                                                       customization_signals=m.get("customization_signals"),
                                                       metrics=m))
+    # 09 数据健康
     health_html = _render_health_section(m.get("parse_health"), idx + 1)
     if health_html:
         idx += 1
         sections.append(health_html)
-    timeline_html = _render_daily_timeline(m.get("daily"), idx + 1)
-    if timeline_html:
-        idx += 1
-        sections.append(timeline_html)
-    trend_html = _render_trend_section(m.get("trend"), idx + 1)
-    if trend_html:
-        idx += 1
-        sections.append(trend_html)
 
     # ---- 附录（不编号）----
     token_block = _render_token_details(m.get("token_usage"), m.get("token_total"))
@@ -1056,7 +1046,7 @@ b{{font-weight:700}}
 .m-lbl{{font-size:12px;color:#667085;margin-top:2px}}
 .delta{{font-weight:700;font-size:.95em;font-family:ui-monospace,'SF Mono',Menlo,monospace;
   font-variant-numeric:tabular-nums}}
-/* ---- 02 高光时刻 ---- */
+/* ---- 05 高光时刻 ---- */
 .hl-card{{padding:8px 22px}}
 .hl-row{{display:flex;align-items:baseline;gap:12px;padding:13px 0;border-bottom:1px solid #eef0f5}}
 .hl-last{{border-bottom:none}}
@@ -1065,7 +1055,7 @@ b{{font-weight:700}}
 .hl-text{{font-size:13.5px;color:#54607a;line-height:1.65;flex:1}}
 .hl-link{{font-size:12px;color:#0e7490;white-space:nowrap;font-weight:500;cursor:help}}
 .ptr-miss{{color:#b45309;font-size:11px;font-weight:700;white-space:nowrap}}
-/* ---- 03 姿势 + 判据 ---- */
+/* ---- 02 姿势 + 判据 ---- */
 .posture-full{{padding:24px 26px}}
 .stack-big{{display:flex;width:100%;height:44px;border-radius:9px;overflow:hidden;font-size:13px;font-weight:700;margin-top:6px}}
 .bseg{{display:flex;align-items:center;justify-content:center}}
@@ -1086,7 +1076,7 @@ b{{font-weight:700}}
 .crit-na{{color:#667085}}
 .crit-gap{{color:#667085;font-size:11.5px;font-weight:700;margin-top:4px}}
 .stage-note{{margin-top:auto;padding-top:12px}}
-/* ---- 04 画像 + 详述 ---- */
+/* ---- 03 画像 + 详述 ---- */
 .radar-card{{padding:22px;display:grid;grid-template-columns:320px 1fr;gap:8px 26px;
   align-items:center}}
 .radar{{margin:0 auto;display:block}}
@@ -1115,12 +1105,12 @@ b{{font-weight:700}}
 .depth-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
 .depth-cell{{background:#f8f9fc;border-radius:10px;padding:14px 16px}}
 .depth-desc{{font-size:12.5px;line-height:1.65;margin-top:4px}}
-/* ---- 05 摩擦建议 ---- */
+/* ---- 04 摩擦建议 ---- */
 .fr-list{{display:grid;gap:12px}}
 .fr-card{{padding:18px 22px}}
 .fr-obs{{font-size:13.5px;color:#344054;line-height:1.7}}
 .fr-ptrs{{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}}
-/* ---- 07 活动热力（时间线柱状）---- */
+/* ---- 06 活动热力（时间线柱状）---- */
 .tl-wrap{{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid #e1e5ef;margin-top:8px}}
 .tl-bar{{flex:1;border-radius:3px 3px 0 0;position:relative;min-height:2px}}
 .tl-val{{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#1a6b5a;font-weight:700}}
@@ -1138,7 +1128,7 @@ b{{font-weight:700}}
 .fr-box{{display:flex;gap:10px;margin-top:10px;background:#fffaeb;border:1px solid #fdeac2;
   border-radius:8px;padding:10px 14px}}
 .fr-sug{{font-size:13px;color:#57534e;line-height:1.7}}
-/* ---- 06 能力盲区 ---- */
+/* ---- 08 能力盲区 ---- */
 .cap-card{{padding:18px 22px;display:grid;gap:10px}}
 .cap-row{{display:flex;gap:12px;font-size:13.5px;color:#344054;line-height:1.7}}
 /* ---- 06b health 段（版本漂移雷达）---- */
@@ -1146,7 +1136,7 @@ b{{font-weight:700}}
 .health-span{{color:#54607a}}
 .health-flag{{margin-top:6px;padding:8px 12px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;color:#991b1b}}
 .health-unknown{{margin-top:8px;color:#667085}}
-/* ---- 07 趋势 / 附录表格 ---- */
+/* ---- 07 趋势 / 09 健康卡 / 附录表格 ---- */
 .trend-card{{padding:8px 22px 16px}}
 table.trend{{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}}
 table.trend th{{padding:12px 8px 9px;text-align:left;font-size:12px;color:#667085;

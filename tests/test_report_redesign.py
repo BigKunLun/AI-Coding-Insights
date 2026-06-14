@@ -93,6 +93,17 @@ def _min_meta():
     return {"generated_at": "2026-06-14T09:29:00", "included_projects": [], "run": None}
 
 
+def test_section_order():
+    from ai_coding_insights.report import render_profile_report
+    prof = _min_profile()
+    prof["highlights"] = [{"pointer": "/a.jsonl#u", "behavior": "凭框架推翻方案 3 次"}]
+    html = render_profile_report(prof, _min_meta(), metrics=None)
+    # 锚定渲染出的章节标题（sec-title span），避免被 CSS 注释里的同名字符串干扰
+    def pos(s): return html.find(f'<span class="sec-title">{s}')
+    # 姿势 < 四维 < 高光（高光已下沉到四维之后）
+    assert -1 < pos("姿势分布") < pos("四维画像") < pos("高光时刻")
+
+
 def test_posture_fullwidth_no_two_col_grid():
     from ai_coding_insights.report import render_profile_report
     html = render_profile_report(_min_profile(), _min_meta(), metrics=None)
