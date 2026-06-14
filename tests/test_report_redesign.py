@@ -183,3 +183,18 @@ def test_tok_row_three_columns_value_outside_bar():
     assert '<span class="tok-val">372</span>' in html
     assert '<span class="tok-bar-wrap"><span class="tok-bar"' in html  # bar-wrap 只含填充
     assert "Top 10" in html  # 工具标题改 10
+
+
+from ai_coding_insights.report import _render_health_section
+
+
+def test_health_card_has_padding_class():
+    # cc_version_span 三字段齐全且无 drift_flags → 应含 health-card、新文案、distinct 被高亮、跨度内未见漂移
+    html = _render_health_section(
+        {"cc_version_span": {"min": "2.1.141", "max": "2.1.177", "distinct": 26}}, 9)
+    assert "health-card" in html
+    assert "数据横跨" in html
+    assert '<span class="n"' in html        # 版本数 26 被高亮
+    assert "未见解析漂移" in html             # 无 flags → 补「未见漂移」文案
+    # 版本号 min/max 走 escape，不该当数字高亮
+    assert "2.1.141" in html and "2.1.177" in html
