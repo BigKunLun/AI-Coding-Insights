@@ -590,6 +590,18 @@ def _split_lead(text: str) -> str:
     return f'<b class="ink">{escape(lead)}</b> —— {escape(rest)}'
 
 
+# 独立数字 token：整数/带千分逗号/单一小数/可带尾 %；前后不得紧邻字母数字或 . - / :
+# （从而跳过版本号 2.1.141、日期 2026-06-14、标识符 opus-4-8 内的数字）
+_NUM_RE = re.compile(r'(?<![\w./:-])(\d[\d,]*(?:\.\d+)?%?)(?![\w./:-])')
+
+
+def _hl_nums(raw, color: str) -> str:
+    """转义后把独立数字 token 包成主题色等宽 span（.n）。只着色既有数字，不生成数字。"""
+    safe = escape(str(raw or ""))
+    return _NUM_RE.sub(
+        lambda mo: f'<span class="n" style="color:{color}">{mo.group(1)}</span>', safe)
+
+
 def _dim_points_rows(points: list) -> str:
     """维度卡分点列表：每行「标题（加粗）+ 次级描述」，按「——」拆分。"""
     rows = ""
