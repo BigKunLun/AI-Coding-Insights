@@ -117,3 +117,25 @@ def test_highlights_highlights_numbers_and_no_blackbold():
     html = _render_highlights_section(hl, [], 5)
     assert '<span class="n"' in html  # 数字高亮
     assert "原会话" in html
+
+
+from ai_coding_insights.report import _timeline_bars
+
+
+def test_timeline_bars_height_and_bucket():
+    daily = [{"date": "2026-06-12", "session_count": 14},
+             {"date": "2026-06-13", "session_count": 43},
+             {"date": "2026-06-14", "session_count": 1}]
+    bars = _timeline_bars(daily)
+    assert len(bars) == 3
+    peak = max(bars, key=lambda b: b["count"])
+    assert peak["date"] == "2026-06-13" and peak["count"] == 43
+    assert peak["height_pct"] == 100.0          # 峰值满高
+    assert all(0 < b["height_pct"] <= 100 for b in bars)
+    assert peak["color"] == "#1a6b5a"           # 21+ 档最深
+    assert next(b for b in bars if b["count"] == 1)["color"] == "#c6e7da"  # 1-5 档
+
+
+def test_timeline_bars_empty():
+    assert _timeline_bars([]) == []
+    assert _timeline_bars(None) == []

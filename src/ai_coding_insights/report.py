@@ -192,93 +192,51 @@ def _render_trend_section(trend: dict | None, idx: int) -> str:
     )
 
 
-def _render_daily_heatmap(daily: list | None, idx: int) -> str:
-    """活动热力图：CSS Grid 7 列（周一到周日），颜色深度按 session_count 分 4 档。"""
-    if not daily:
-        return ""
-    # 构建日期→数据映射
-    from datetime import date as date_type, timedelta
-    data_map = {}
-    for d in daily:
-        if not isinstance(d, dict):
-            continue
-        dt = d.get("date")
-        if isinstance(dt, str) and dt:
-            data_map[dt] = d.get("session_count", 0)
-
-    if not data_map:
-        return ""
-
-    dates = sorted(data_map)
-    try:
-        first = date_type.fromisoformat(dates[0])
-        last = date_type.fromisoformat(dates[-1])
-    except ValueError:
-        return ""   # 日期串异常 → 热力图整段降级为不渲染，不连累整张报告
-
-    # 从 first 所在的周一开始，到 last 所在的周日结束
-    start = first - timedelta(days=first.weekday())
-    end = last - timedelta(days=last.weekday()) + timedelta(days=6)
-    # 不延伸到今天之后（窗口最后一天是周三，周填充不应显示周四-周日灰块）
-    end = min(end, date_type.today())
-
-    cells = ""
-    cur = start
-    month_labels = []
-    week = []
-    weeks = []
-    while cur <= end:
-        iso = cur.isoformat()
-        val = data_map.get(iso, 0)
-        if val == 0:
-            level, color = 0, "#ebedf0"
-        elif val <= 5:
-            level, color = 1, "#c6e7da"
-        elif val <= 12:
-            level, color = 2, "#6fc9b0"
-        elif val <= 20:
-            level, color = 3, "#2d9d7e"
+def _timeline_bars(daily) -> list:
+    """时间线柱：每项 {date, count, height_pct, color}。按会话数分 4 档配色，峰值满高。"""
+    rows = []
+    for d in (daily or []):
+        if isinstance(d, dict) and isinstance(d.get("date"), str) and d["date"]:
+            rows.append((d["date"], int(d.get("session_count", 0) or 0)))
+    if not rows:
+        return []
+    rows.sort(key=lambda x: x[0])
+    mx = max(c for _, c in rows) or 1
+    out = []
+    for dt, c in rows:
+        if c == 0:
+            color = "#ebedf0"
+        elif c <= 5:
+            color = "#c6e7da"
+        elif c <= 12:
+            color = "#6fc9b0"
+        elif c <= 20:
+            color = "#2d9d7e"
         else:
-            level, color = 4, "#1a6b5a"
-        title = f"{iso}：{val} 会话" if val else iso
-        cells += f'<div class="h-cell h-lv{level}" style="background:{color}" title="{title}"></div>'
-        # 月份标签：每月第一天，记录周内列位置（1-7）
-        if cur.day == 1 or cur == start:
-            month_labels.append((len(week) + 1, cur.strftime("%m月")))
-        week.append(cur)
-        if cur.weekday() == 6:
-            weeks.append(week)
-            week = []
-        cur += timedelta(days=1)
-    if week:
-        weeks.append(week)
+            color = "#1a6b5a"
+        out.append({"date": dt, "count": c, "height_pct": round(c / mx * 100, 1), "color": color})
+    return out
 
-    # 星期表头
-    day_names = ["一", "二", "三", "四", "五", "六", "日"]
-    header = "".join(f"<div class='h-dow'>{d}</div>" for d in day_names)
 
-    # 月份标注行
-    month_row = ""
-    for pos, label in month_labels:
-        month_row += f"<div class='h-mo' style='grid-column:{pos}'>{label}</div>"
-
-    # 行数
-    n_rows = len(weeks)
-
+def _render_daily_timeline(daily, idx: int) -> str:
+    """活动热力 → 时间线柱状：横轴日期、纵轴会话数。空则空串（不占章节号）。"""
+    bars = _timeline_bars(daily)
+    if not bars:
+        return ""
+    mx = max(b["count"] for b in bars)
+    cols = ""
+    for b in bars:
+        peak = ' tl-peak' if b["count"] == mx else ''
+        val = f'<span class="tl-val">{b["count"]}</span>' if b["count"] == mx else ''
+        cols += (f'<div class="tl-bar{peak}" style="height:{max(b["height_pct"],2):.1f}%;'
+                 f'background:{b["color"]}" title="{escape(b["date"])}：{b["count"]} 会话">{val}</div>')
+    first, last = bars[0]["date"], bars[-1]["date"]
     return (
         _sec_header(idx, "活动热力")
-        + '<div class="card">'
-        + f'<div class="heatmap" style="--h-cols:7;--h-rows:{n_rows};--h-row-start:2">'
-        + f'<div class="h-mo-row">{month_row}</div>'
-        + f'<div class="h-dow-row">{header}</div>'
-        + f'<div class="h-grid">{cells}</div>'
-        + '<div class="h-legend">'
-        + '<span class="h-leg-swatch" style="background:#ebedf0"></span> 0'
-        + '<span class="h-leg-swatch" style="background:#c6e7da"></span> 1–5'
-        + '<span class="h-leg-swatch" style="background:#6fc9b0"></span> 6–12'
-        + '<span class="h-leg-swatch" style="background:#2d9d7e"></span> 13–20'
-        + '<span class="h-leg-swatch" style="background:#1a6b5a"></span> 21+'
-        + '</div></div></div>'
+        + '<div class="card"><div class="tl-wrap">' + cols + '</div>'
+        + f'<div class="tl-axis"><span>{escape(first)}</span><span>{escape(last)}</span></div>'
+        + '<div class="fine-note">每柱为当日会话数，色深按当日活跃分档；峰值标数值。'
+        '讲节奏趋势，与下文「窗口趋势」互证。</div></div>'
     )
 
 
@@ -1000,10 +958,10 @@ def render_profile_report(profile: dict, meta: dict,
     if health_html:
         idx += 1
         sections.append(health_html)
-    heatmap_html = _render_daily_heatmap(m.get("daily"), idx + 1)
-    if heatmap_html:
+    timeline_html = _render_daily_timeline(m.get("daily"), idx + 1)
+    if timeline_html:
         idx += 1
-        sections.append(heatmap_html)
+        sections.append(timeline_html)
     trend_html = _render_trend_section(m.get("trend"), idx + 1)
     if trend_html:
         idx += 1
@@ -1158,16 +1116,11 @@ b{{font-weight:700}}
 .fr-card{{padding:18px 22px}}
 .fr-obs{{font-size:13.5px;color:#344054;line-height:1.7}}
 .fr-ptrs{{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}}
-/* ---- 07 活动热力 ---- */
-.heatmap{{display:grid;grid-template-rows:auto auto auto;gap:4px;margin-top:8px}}
-.h-mo-row{{display:grid;grid-template-columns:repeat(var(--h-cols),1fr);grid-column:2}}
-.h-mo{{font-size:11px;color:#667085;font-weight:600}}
-.h-dow-row{{display:flex;gap:4px;margin-top:2px;font-size:11px;color:#667085;font-weight:600}}
-.h-dow{{width:28px;text-align:center}}
-.h-grid{{display:grid;grid-template-columns:repeat(var(--h-cols),28px);gap:4px;margin-top:2px}}
-.h-cell{{width:28px;height:28px;border-radius:4px;cursor:help}}
-.h-legend{{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:11px;color:#667085}}
-.h-leg-swatch{{display:inline-block;width:14px;height:14px;border-radius:3px}}
+/* ---- 07 活动热力（时间线柱状）---- */
+.tl-wrap{{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid #e1e5ef;margin-top:8px}}
+.tl-bar{{flex:1;border-radius:3px 3px 0 0;position:relative;min-height:2px}}
+.tl-val{{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#1a6b5a;font-weight:700}}
+.tl-axis{{display:flex;justify-content:space-between;font-size:11px;color:#8a93a8;margin-top:6px}}
 /* ---- 工具/技能/MCP 附录 ---- */
 .tok-block{{margin-bottom:8px}}
 .tok-block summary{{cursor:pointer;font-size:13px;font-weight:600;color:#475467;padding:4px 0;list-style:none}}
@@ -1235,9 +1188,8 @@ table.trend tbody tr:last-child td{{border-bottom:none}}
   .radar-card,.dim-cards,.depth-grid,.lg-grid{{grid-template-columns:1fr}}
   .m-grid{{grid-template-columns:repeat(2,1fr)}}
   .hero-nums{{gap:20px;flex-wrap:wrap}}
-  /* 窄屏：固定大像素列会撑破容器/触发横滚——首列可缩、热力图等比缩 */
+  /* 窄屏：固定大像素列会撑破容器/触发横滚——首列可缩 */
   .tok-row{{grid-template-columns:minmax(80px,140px) 1fr 48px;gap:8px}}
-  .h-grid{{grid-template-columns:repeat(var(--h-cols),minmax(0,1fr))}}
 }}
 @media print{{
   .hero{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
