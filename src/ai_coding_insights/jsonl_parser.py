@@ -74,8 +74,11 @@ def parse_session(path) -> ParsedSession:
     mcp_servers: set = set()        # 用 set 收集，最后转 sorted list
     thinking_block_count = 0
     background_task_count = 0
-    max_parallel_agents = 0
-    parallel_agent_turns = 0
+    # 真并行按 message.id 聚合 Agent 数：CC 把同一轮并发的 N 个 Agent 拆成 N 条独立
+    # assistant 记录、共用同一个 message.id（每条仅 1 个 Agent block）。按单条记录计会
+    # 恒为 1、漏算所有真并行；按 message.id 累加才还原单轮并发峰值。
+    agents_by_msg: dict = {}
+    _assist_seq = 0
     versions: set = set()
     record_type_counts: dict = {}
     seen_sha = set()
@@ -122,6 +125,7 @@ def parse_session(path) -> ParsedSession:
                     text=extract_text(msg.get("content")) or "",
                     timestamp=line.get("timestamp", "")))
             if line.get("type") == "assistant":
+                _assist_seq += 1
                 msg = _msg_dict(line)
                 model = msg.get("model")
                 if model and model != "<synthetic>":
@@ -170,11 +174,11 @@ def parse_session(path) -> ParsedSession:
                         parts = name.split("__", 2)
                         if len(parts) >= 2 and parts[1]:
                             mcp_servers.add(parts[1])
-                # 单条 message 的并行峰值与真并行轮次（≥2 个 Agent 同发才算真并行）
-                if agent_in_msg > max_parallel_agents:
-                    max_parallel_agents = agent_in_msg
-                if agent_in_msg >= 2:
-                    parallel_agent_turns += 1
+                # 按 message.id 累加同一 assistant 轮跨记录派出的 Agent 数；message.id
+                # 缺失（旧记录/无 id）退化为本条记录独立计数（用递增序号兜底，防误并）。
+                if agent_in_msg:
+                    mid = msg.get("id") or f"_a{_assist_seq}"
+                    agents_by_msg[mid] = agents_by_msg.get(mid, 0) + agent_in_msg
             # AskUserQuestion 选项回答：tool_result 按 id 配对 + 顶层 toolUseResult
             # 含 answers dict（拒绝时是字符串回执，天然排除）。每答一题计 1 个决策点。
             if line.get("type") == "user" and ask_ids:
@@ -201,6 +205,9 @@ def parse_session(path) -> ParsedSession:
                 sp = tur.get("structuredPatch")
                 if isinstance(sp, list) and sp:
                     edit_count += 1
+    # 单轮并发峰值与真并行轮次（同一 message.id 聚合 ≥2 个 Agent 才算真并行）
+    max_parallel_agents = max(agents_by_msg.values(), default=0)
+    parallel_agent_turns = sum(1 for c in agents_by_msg.values() if c >= 2)
     return ParsedSession(
         file_path=str(path), session_id=session_id or "", cwd=cwd or "",
         git_branch=git_branch, user_turns=user_turns,

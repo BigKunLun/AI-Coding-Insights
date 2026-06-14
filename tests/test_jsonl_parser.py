@@ -288,3 +288,46 @@ def test_option_pick_none_id_not_paired(tmp_path):
     ]
     s = parse_session(_write_jsonl(tmp_path, lines))
     assert s.option_pick_count == 0
+
+
+def test_parallel_agents_grouped_by_message_id(tmp_path):
+    # CC 把同一轮并发的 N 个 Agent 拆成 N 条记录共用 message.id，每条仅 1 个 Agent block。
+    # 真并行度须按 message.id 聚合，否则恒为 1/0（真并行被系统性漏算）。
+    lines = [
+        {"type":"user","sessionId":"s","cwd":"/r","uuid":"u1",
+         "timestamp":"2026-06-01T00:00:00Z","message":{"content":"do"}},
+        {"type":"assistant","timestamp":"2026-06-01T00:01:00Z",
+         "message":{"id":"msgA","model":"m","content":[{"type":"tool_use","name":"Agent"}]}},
+        {"type":"assistant","timestamp":"2026-06-01T00:01:00Z",
+         "message":{"id":"msgA","model":"m","content":[{"type":"tool_use","name":"Agent"}]}},
+        {"type":"assistant","timestamp":"2026-06-01T00:01:00Z",
+         "message":{"id":"msgA","model":"m","content":[{"type":"tool_use","name":"Agent"}]}},
+        {"type":"assistant","timestamp":"2026-06-01T00:02:00Z",
+         "message":{"id":"msgB","model":"m","content":[{"type":"tool_use","name":"Agent"}]}},
+    ]
+    p = tmp_path / "s.jsonl"
+    p.write_text("\n".join(json.dumps(x) for x in lines))
+    s = parse_session(p)
+    assert s.max_parallel_agents == 3      # msgA 跨 3 条记录聚合 3 个 Agent
+    assert s.parallel_agent_turns == 1     # 仅 msgA 真并行（≥2），msgB 顺序派 1 个不算
+
+
+def test_parallel_agents_single_record_multi_block(tmp_path):
+    # 兼容旧形态：单条记录内含多个 Agent block 也算同轮并行
+    lines = [{"type":"assistant","timestamp":"2026-06-01T00:01:00Z",
+              "message":{"id":"m1","model":"m","content":[
+                  {"type":"tool_use","name":"Agent"},{"type":"tool_use","name":"Agent"}]}}]
+    p = tmp_path / "s.jsonl"; p.write_text("\n".join(json.dumps(x) for x in lines))
+    s = parse_session(p)
+    assert s.max_parallel_agents == 2 and s.parallel_agent_turns == 1
+
+
+def test_parallel_agents_no_message_id_not_merged(tmp_path):
+    # 无 message.id 的多条单 Agent 记录不得被并成一轮（防误并）
+    lines = [{"type":"assistant","timestamp":"2026-06-01T00:01:00Z",
+              "message":{"model":"m","content":[{"type":"tool_use","name":"Agent"}]}},
+             {"type":"assistant","timestamp":"2026-06-01T00:01:01Z",
+              "message":{"model":"m","content":[{"type":"tool_use","name":"Agent"}]}}]
+    p = tmp_path / "s.jsonl"; p.write_text("\n".join(json.dumps(x) for x in lines))
+    s = parse_session(p)
+    assert s.max_parallel_agents == 1 and s.parallel_agent_turns == 0
