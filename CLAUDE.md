@@ -19,13 +19,14 @@ uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-co
 
 零运行时依赖（纯 stdlib），dev 仅 pytest。
 
-规则层共 5 个子命令，正常由 skill 编排调用，单独调试时也可直接跑（点到存在即可，参数以代码为准）：
+规则层共 6 个子命令，正常由 skill 编排调用，单独调试时也可直接跑（点到存在即可，参数以代码为准）：
 
 - `scan` —— 扫描 / 窗口决策 / 分批 / 硬指标；`--emit-batches` 是编排主路径，四种输出形态互斥（`--emit-batches` / `--profile-input` / `--json` / 默认渲染 HTML）。
 - `init` —— 交互配置向导，从本机会话来源勾选团队归属。
 - `verify-obs` —— 校验 LLM 观测（obs）对批次的覆盖与 posture 计数完整性。
 - `render-profile` —— 渲染最终画像 HTML 报告。
 - `auto-scan` —— `SessionEnd` hook 后台自动评估（接线在 `hooks/hooks.json`；自带 lock 防重入 + 滚动日志，失败对用户静默）。
+- `reset` —— 清掉本机可再生产物（`snapshots/` / `reports/` / `run/` / `.auto-scan.lock` / `auto-scan.log`），解除 30 天增量窗口闸门以便干净重测；按白名单删、`--dry-run` 只预览，永不碰 `config.toml` 与会话原文。slash 入口 `commands/reset.md`。
 
 ## 架构原则
 
@@ -40,6 +41,7 @@ uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-co
 - **中间 JSON**（落 `--emit-batches` 目录）：`batch-NN.json`（LLM 分批输入）、`obs-*.json`（extractor 产出）、`_window.json`、`_aggregate.json`（已剥掉含项目名的 `project_breakdown`，含 `parse_health` / `customization_signals` 等字段）、`profile.json`（合成画像）。
 - **CLI 参数**：`render-profile` 的 `--metrics` / `--window` / `--obs-glob` / `--run-*`。
 - **profile schema**：`profile_schema.py`。
+- **reset 产物白名单**（`cli.py` 的 `_RESET_PRODUCTS`）：是横跨 4 处真相源的「汇聚契约」——`snapshots`（已引用 `DEFAULT_SNAPSHOT_DIR` 随动）、`reports`（`hooks/auto-scan-hook.sh` 的 `REPORT_DIR`）、`run`（SKILL.md 的 `--emit-batches` 落点）、`.auto-scan.lock` / `auto-scan.log`（`auto-scan` 的 state 目录）。**改任一落点须同步此白名单**，否则 reset 静默漏删 → 30 天闸门不解除。
 
 ## 不变约束（定位级，违反即 bug）
 

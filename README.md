@@ -136,6 +136,6 @@ uv run pytest    # 全量测试（Python ≥3.11，零运行时依赖，dev 仅 
 uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-coding-insights/run
 ```
 
-规则层共 5 个子命令：`scan`（扫描 / 分批 / 硬指标）、`init`（交互配置向导）、`verify-obs`（校验 LLM 观测对批次的覆盖与完整性）、`render-profile`（渲染画像 HTML）、`auto-scan`（SessionEnd hook 后台自动评估）——除调试外均由 skill 编排调用。
+规则层共 6 个子命令：`scan`（扫描 / 分批 / 硬指标）、`init`（交互配置向导）、`verify-obs`（校验 LLM 观测对批次的覆盖与完整性）、`render-profile`（渲染画像 HTML）、`auto-scan`（SessionEnd hook 后台自动评估）、`reset`（清掉本机可再生产物以便干净重测，`/ai-coding-insights:reset` 为 slash 入口）——除调试外均由 skill 编排调用。
 
 架构与约束详见 [CLAUDE.md](CLAUDE.md)。

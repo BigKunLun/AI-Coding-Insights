@@ -1,4 +1,4 @@
-import argparse, json, os, sys
+import argparse, json, os, shutil, sys
 from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
 from .config import load_config, resolve_config_path, ConfigError
@@ -537,6 +537,52 @@ def _cmd_auto_scan(args) -> int:
     return 0
 
 
+# 本机可再生产物的白名单（相对 state_dir 的名字）。承重：清单写死在此，绝不含
+# config.toml（在 ~/.claude 那棵树下）与 sessions 原文——reset 只清自己产出的东西。
+# 这 5 个 basename 是横跨 4 处真相源的「汇聚契约」（见 CLAUDE.md 接缝一节）：snapshots
+# 引用 DEFAULT_SNAPSHOT_DIR 而非字面量，常量改名即随动；其余 4 个的真相源在 bash hook /
+# SKILL.md / auto-scan 局部变量里，无 Python 常量可引，改它们须手动同步此处。
+_RESET_PRODUCTS = (DEFAULT_SNAPSHOT_DIR.name, "reports", "run",
+                   ".auto-scan.lock", "auto-scan.log")
+
+
+def reset_targets(state_dir: Path) -> list[Path]:
+    """纯函数：返回该清的产物路径（按白名单，不做存在性判断/不碰 IO）。"""
+    return [state_dir / name for name in _RESET_PRODUCTS]
+
+
+def _cmd_reset(args) -> int:
+    """清掉本机可再生产物，让用户干净重测（解除 30 天增量窗口闸门）。
+
+    只删 --state-dir 下的已知产物白名单；--dry-run 只列不删。
+    """
+    state_dir = Path(args.state_dir).expanduser()
+    dry = args.dry_run
+    removed = []
+    for target in reset_targets(state_dir):
+        # 符号链接必须先判：悬空链接 exists()==False 会被漏清；指向目录的链接交给
+        # rmtree 会抛 OSError 且可能跟随删到链外——一律只摘链接自身，绝不跟随。
+        if target.is_symlink():
+            if not dry:
+                target.unlink()
+        elif not target.exists():
+            continue
+        elif not dry:
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink(missing_ok=True)
+        removed.append(target)
+
+    verb = "将删" if dry else "已删"
+    if removed:
+        for t in removed:
+            print(f"{verb}: {t.name}")
+    else:
+        print(f"无产物可清：{state_dir}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="ai_coding_insights")
     sub = ap.add_subparsers(dest="cmd")
@@ -582,6 +628,9 @@ def main(argv=None) -> int:
     au.add_argument("--days", type=int, default=None)
     au.add_argument("--snapshot-dir", default=str(DEFAULT_SNAPSHOT_DIR))
     au.add_argument("--state-dir", default=None)   # lock + 滚动日志目录；缺省 ~/.ai-coding-insights
+    rs = sub.add_parser("reset")
+    rs.add_argument("--state-dir", default=str(Path.home() / ".ai-coding-insights"))
+    rs.add_argument("--dry-run", action="store_true")
     # 向后兼容：Plan 1 的 SKILL.md 调用无子命令（如 `--config X --out Y`）。
     # argparse 子命令模式下，若 argv 首个 token 不是已知子命令，顶层 parse_args 会
     # 把后续 option 的取值误判为子命令选择并直接 SystemExit，根本到不了下面的
@@ -599,6 +648,8 @@ def main(argv=None) -> int:
             return _cmd_render_profile(args)
         if args.cmd == "auto-scan":
             return _cmd_auto_scan(args)
+        if args.cmd == "reset":
+            return _cmd_reset(args)
         # 默认 / "scan"：向后兼容（无子命令时按 scan 解析）
         if args.cmd is None:
             args = sc.parse_args(raw)
