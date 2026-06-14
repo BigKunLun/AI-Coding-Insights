@@ -41,3 +41,12 @@ def test_trend_first_half_unobservable_landed_ratio_is_none():
     assert tr["first_half"]["commits"] == 0
     assert tr["first_half"]["landed_ratio"] is None       # 不可观测，非 0.0
     assert round(tr["second_half"]["landed_ratio"], 4) == 0.6
+
+
+def test_p90_index_not_max_for_small_n():
+    # P90 下标不应在小样本退化为末位（=max）：int(0.9*10)=9 取末位，应取第9个=idx8
+    from ai_coding_insights.signals import _p90_index
+    assert _p90_index(10) == 8       # 第9个，非末位（max）
+    assert _p90_index(11) == 9
+    assert _p90_index(1) == 0
+    assert _p90_index(459) == 413     # 大样本与旧 int(0.9n) 一致

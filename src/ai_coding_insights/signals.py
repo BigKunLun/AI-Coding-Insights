@@ -1,3 +1,4 @@
+import math
 import re
 import statistics
 from collections import defaultdict
@@ -5,6 +6,15 @@ from datetime import timedelta
 
 from .models import AggregateMetrics, OutcomeStats, ParsedSession, SessionStats
 from .timeutil import parse_timestamp
+
+
+def _p90_index(n: int) -> int:
+    """P90 最近秩下标 = ceil(0.9·n)−1，小样本不退化为末位（即 max）。
+
+    旧式 int(0.9·n) 在 n≤10 时恒等于 n−1（末位），把 P100 当 P90 上报；
+    最近秩公式在 n=10 时取第 9 个、n≥11 与旧式一致。调用方需保证 n≥1。
+    """
+    return max(0, math.ceil(n * 0.9) - 1)
 
 _FOLLOW_WORDS = {"继续","好","好的","可以","行","对","嗯","ok","okay","yes","y",
                  "go","next","下一步","sure"}
@@ -189,10 +199,10 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
     duration_median_min = statistics.median(durations) / 60 if durations else None
     # P90 指标：剔除大量微会话（1-2 轮即关闭）拉低均值/中位数，P90 反映"实际工作会话"水平
     durations_sorted = sorted(durations)
-    duration_p90_min = (durations_sorted[int(len(durations_sorted) * 0.9)] / 60
+    duration_p90_min = (durations_sorted[_p90_index(len(durations_sorted))] / 60
                         if durations_sorted else None)
     turns_sorted = sorted(st.turn_count for st in stats)
-    turn_p90 = turns_sorted[int(len(turns_sorted) * 0.9)] if turns_sorted else 0
+    turn_p90 = turns_sorted[_p90_index(len(turns_sorted))] if turns_sorted else 0
 
     project_breakdown: dict = {}
     for s, o in zip(sessions, outcomes):

@@ -14,7 +14,10 @@ def discover_sessions(projects_dir, rules: list[RemoteRule] | None,
                               since: datetime | None = None) -> list[ParsedSession]:
     """rules=None 即 mode="all"：全部纳入，不跑 git 归属判定（省子进程）。
     rules 为列表即 mode="include"：仅纳入 remote 命中的项目（宁漏勿误）。"""
-    cutoff = now - timedelta(days=lookback_days)
+    # cutoff 对齐当天 00:00，与报告标注的 since_date（整天口径）一致——否则按 now 的
+    # 时刻算会把 since_date 当天早于运行时刻的会话误排除，边界会话归属随运行时刻漂移。
+    cutoff = (now - timedelta(days=lookback_days)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
     results: list[ParsedSession] = []
     verdict: dict[str, bool] = {}  # per-cwd 缓存：同 cwd 多会话只跑一次 git 子进程
     for path in sorted(Path(projects_dir).glob("*/*.jsonl")):  # depth 2 = top-level only

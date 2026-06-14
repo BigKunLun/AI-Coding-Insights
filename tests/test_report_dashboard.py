@@ -549,3 +549,10 @@ def test_trend_unobservable_half_shows_dash_not_fake_ratio():
     row = re.search(r'落地率\(观测\)</td>.*?</tr>', html).group(0)
     assert "—" in row and "75%" in row            # 前半不可观测显「—」，后半 75%
     assert "0%" not in row                         # 不把前半渲染成 0% 假值
+
+
+def test_model_count_label_not_switch():
+    # 「使用模型数」名实相符（=len(token_usage)），不再用误导的「模型切换」标签
+    m = dict(METRICS_V5, token_usage={"a": {}, "b": {}, "c": {}})
+    html = render_profile_report(PROFILE_V5, META_V5, m, DIFF_V5)
+    assert "使用模型数" in html and "模型切换" not in html

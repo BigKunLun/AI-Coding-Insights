@@ -201,3 +201,15 @@ def test_detect_data_start_skips_long_untimestamped_header(tmp_path):
     (d / "p.jsonl").write_text("\n".join(header))
     start = detect_data_start(projects)
     assert start is not None and start.startswith("2026-05-01")
+
+
+def test_discover_cutoff_aligned_to_day_start(tmp_path):
+    # cutoff 应对齐当天 00:00（与标注 since_date 整天口径一致），不按 now 的时刻，
+    # 否则 since_date 当天早于运行时刻的会话被误排除。
+    proj = tmp_path / "p"; proj.mkdir()
+    line = {"type": "user", "sessionId": "s", "cwd": "/r", "uuid": "u",
+            "timestamp": "2026-04-29T06:00:00Z", "message": {"content": "x"}}
+    (proj / "s.jsonl").write_text(json.dumps(line))
+    now = datetime(2026, 6, 13, 23, 0, 0, tzinfo=timezone.utc)   # 45 天前=04-29
+    sessions = discover_sessions(tmp_path, None, 45, now)        # glob 为 depth-2，传父目录
+    assert len(sessions) == 1     # 04-29 当天会话纳入（修复前 cutoff 含 23:00 会排除）

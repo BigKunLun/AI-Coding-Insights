@@ -27,7 +27,8 @@ def save_snapshot(metrics: dict, posture: dict, outcome: dict, generated_at: str
         "window": window,
         "metrics": metrics,
         "posture_distribution": posture,
-        "posture_rubric": 2,    # 姿势口径版本：2=逐 turn 语义分档（2026-06-12 起），跨口径不可同比
+        "posture_rubric": 2,    # 姿势口径版本（2=逐 turn 语义分档，2026-06-12 起）。当前
+                                # diff_metrics 不消费此字段、posture 不参与同比；留作未来跨 rubric 守卫位
         "outcome": outcome,
     }
     # 临时文件 + 原子替换：写一半被打断不会留下截断 json 毁掉下次基线

@@ -163,7 +163,12 @@ class AggregateMetrics:
 
     @property
     def landed_ratio(self) -> float:
-        # 已知证据下的落地率：git 主锚落地 /（落地 + 已知丢弃）。
+        # 已知证据下的落地率：git 主锚落地 /（落地 + 已知丢弃）。口径为契约钦定
+        # （CLAUDE.md/SKILL：total = git_landed_count + dropped_count）。
+        # ⚠ 混合口径估计器，偏乐观：分子 git_landed_count 是 git 锚口径（全 author 提交按
+        # 窗口归属），分母的 dropped 来自 transcript 观测（仅见部分提交，本机实测约 15%）。
+        # 两 population 不对等，transcript 系统性低估丢弃 → 该比率偏高，应读作「可核账落地
+        # 中的存活率估计」而非精确落地率。
         # transcript 不可观测（commit_count=0，如旧版 CC 无 gitOperation 回执）时
         # dropped 未知按 0 计——有 git 落地即 1.0，无任何证据为 0.0。
         denom = self.git_landed_count + self.dropped_count

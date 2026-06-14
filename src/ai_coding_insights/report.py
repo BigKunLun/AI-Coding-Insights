@@ -723,7 +723,7 @@ def render_profile_report(profile: dict, meta: dict,
     # 不渲染「编辑/落地」派生比率：edit_count 是全会话编辑量、git_landed 是 git 锚落地数，
     # 跨口径相除（分子分母分属不同总体）无 per-commit 语义。只陈列两个原值。
     token_usage = m.get("token_usage") or {}
-    model_switch = num(len(token_usage) if token_usage else None)
+    model_count = num(len(token_usage) if token_usage else None)
     families = [
         ("产出落地", "#0d9488", "#0f766e", [
             ("落地提交", num(None if git_landed is None else int(git_landed)),
@@ -736,7 +736,7 @@ def render_profile_report(profile: dict, meta: dict,
             ("SubAgent 会话", num(mval("subagent_sessions")), diff_html("subagent_sessions")),
             ("Workflow 会话", num(mval("workflow_sessions")), diff_html("workflow_sessions")),
             ("MCP 会话", num(mval("mcp_sessions")), diff_html("mcp_sessions")),
-            ("模型切换", model_switch, ""),
+            ("使用模型数", model_count, ""),
         ]),
         # 高阶行为：三个维度信号均为确定性硬指标（深度推理块 / 后台委托 / 真并行），
         # 由规则层从 transcript 直接计数，不依赖 LLM 判定。真并行峰值=1、轮次=0 表示
