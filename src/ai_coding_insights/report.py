@@ -104,6 +104,23 @@ def _render_stage_panel(st: dict) -> str:
     )
 
 
+def _render_stage_criteria_inline(st: dict) -> str:
+    """判据横向两栏：已达标（绿✓）/ 距下一档（红✗）。复用 _stage_crit_row，与 _render_stage_panel 同口径。"""
+    sv = st.get("values", {}) or {}
+    met = "".join(_stage_crit_row(c, sv, met=True) for c in (st.get("criteria") or []))
+    gaps = st.get("gaps") or []
+    miss = "".join(_stage_crit_row(g, sv, met=False) for g in gaps)
+    stage_no = int(st.get("stage", 1))
+    return (
+        '<div class="crit-cols">'
+        f'<div class="crit-col"><div class="crit-cap crit-cap-ok">当前第 {stage_no} 档 · 已达标</div>'
+        f'<div class="crit-list">{met}</div></div>'
+        + (f'<div class="crit-col"><div class="crit-cap crit-cap-miss">距下一档 · 还差</div>'
+           f'<div class="crit-list">{miss}</div></div>' if miss else "")
+        + '</div>'
+    )
+
+
 def _trend_arrow(a: float, b: float) -> str:
     if b > a:
         return "↑"
@@ -799,22 +816,24 @@ def render_profile_report(profile: dict, meta: dict,
     # 阶段判定只算一次：横幅大字 / 判据卡共用同一结果
     stage = (None if metrics is None
              else decide_stage(pd, m.get("tool_breadth", 0), m.get("landed_ratio", 0.0)))
-    posture_card = (
-        '<div class="card posture-card">'
+    # 大堆叠条：段内嵌百分比；宽度公式与现有 segs 完全一致，只是放大+内嵌文字
+    big_segs = "".join(
+        f'<span style="width:{pct(t)/total_pd*100:.2f}%;background:{_POSTURE_COLORS[t]}" '
+        f'class="bseg" title="{t} {pct(t):.0%}">{t} {pct(t):.0%}</span>'
+        for t in ("L1", "L2", "L3", "L4") if pct(t) > 0
+    )
+    crit_html = _render_stage_criteria_inline(stage) if stage is not None else ""
+    posture_sec_title = "姿势分布与档位判据" if stage is not None else "姿势分布"
+    posture_section_body = (
+        '<div class="card posture-full">'
         '<div class="card-title">姿势分布（主导性）</div>'
-        f'<div class="stack">{segs}</div>'
-        f'<div class="lg-list">{legend_html}</div>'
+        f'<div class="stack-big">{big_segs}</div>'
+        f'<div class="lg-grid">{legend_html}</div>'
+        f'{crit_html}'
         '<div class="fine-note">四档由 LLM 对每条真人输入逐条语义分档、规则层聚合组装；'
         'AskUserQuestion 选项回答按协议硬信号计入 L2。</div>'
         '</div>'
     )
-    if stage is not None:
-        posture_sec_title = "姿势分布与档位判据"
-        posture_section_body = (f'<div class="posture-grid">{posture_card}'
-                                f'{_render_stage_panel(stage)}</div>')
-    else:
-        posture_sec_title = "姿势分布"
-        posture_section_body = posture_card
 
     # ---- 04 四维雷达 + 维度详述 ----
     axis_posture = max(0.0, min(1.0, pct("L3") + pct("L4")))
@@ -1088,11 +1107,16 @@ b{{font-weight:700}}
 .hl-link{{font-size:12px;color:#0e7490;white-space:nowrap;font-weight:500;cursor:help}}
 .ptr-miss{{color:#b45309;font-size:11px;font-weight:700;white-space:nowrap}}
 /* ---- 03 姿势 + 判据 ---- */
-.posture-grid{{display:grid;grid-template-columns:3fr 2fr;gap:16px}}
-.posture-card{{padding:20px 22px}}
-.posture-card .card-title{{margin-bottom:14px}}
-.stack{{display:flex;width:100%;height:26px;border-radius:7px;overflow:hidden}}
-.lg-list{{display:grid;gap:8px;margin-top:14px;font-size:12.5px;color:#475467;line-height:1.55}}
+.posture-full{{padding:24px 26px}}
+.stack-big{{display:flex;width:100%;height:44px;border-radius:9px;overflow:hidden;font-size:13px;font-weight:700;margin-top:6px}}
+.bseg{{display:flex;align-items:center;justify-content:center;color:#fff}}
+.bseg:nth-child(1),.bseg:nth-child(2){{color:#0e3a4a}}
+.lg-grid{{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px;margin-top:16px;font-size:12.5px;color:#54607a;line-height:1.5}}
+.crit-cols{{display:flex;gap:30px;margin-top:20px;padding-top:16px;border-top:1px solid #eef0f5;flex-wrap:wrap}}
+.crit-col{{flex:1;min-width:200px}}
+.crit-cap{{font-size:11px;font-weight:700;letter-spacing:.5px;margin-bottom:8px}}
+.crit-cap-ok{{color:#15803d}}
+.crit-cap-miss{{color:#b42318}}
 .lg-row{{display:flex;gap:8px}}
 .lg-swatch{{flex:0 0 auto;width:10px;height:10px;border-radius:3px;transform:translateY(4px)}}
 .stage-panel{{padding:20px 22px;display:flex;flex-direction:column}}
@@ -1212,7 +1236,7 @@ table.trend tbody tr:last-child td{{border-bottom:none}}
 /* ---- 窄屏 / 打印 ---- */
 @media (max-width:720px){{
   .hero,.main{{padding-left:20px;padding-right:20px}}
-  .posture-grid,.radar-card,.dim-cards,.depth-grid{{grid-template-columns:1fr}}
+  .radar-card,.dim-cards,.depth-grid,.lg-grid{{grid-template-columns:1fr}}
   .m-grid{{grid-template-columns:repeat(2,1fr)}}
   .hero-nums{{gap:20px;flex-wrap:wrap}}
   /* 窄屏：固定大像素列会撑破容器/触发横滚——首列可缩、热力图等比缩 */

@@ -411,11 +411,11 @@ def test_stage_card_criteria_table():
     metrics = dict(_metrics())
     metrics["landed_ratio"] = 0.3
     html = render_profile_report(_profile(), _meta(), metrics, None)
-    assert "档位判据" in html
+    assert "已达标" in html      # 全宽卡判据横栏：已达标列
     assert "75%" in html        # L3+L4 实际
     assert "28 种" in html      # 工具广度实际
     assert 'class="crit-ok"' in html and "✓" in html
-    assert "距下一阶段还差" in html
+    assert "距下一档" in html    # 距下一档缺口列
     assert 'class="crit-miss"' in html and "✗" in html
     assert "18%" in html        # 未达标判据也给实际值
 

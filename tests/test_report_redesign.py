@@ -77,3 +77,24 @@ def test_radar_dim_desc_no_double_escape():
     html = render_profile_report(prof, meta, metrics=None)
     assert "&amp;amp;" not in html          # 不得双重转义
     assert "&amp;" in html                   # 单次转义后的 & 仍在
+
+
+def _min_profile():
+    return {
+        "posture_distribution": {"L1": 0.4, "L2": 0.2, "L3": 0.29, "L4": 0.11},
+        "breadth": {"headline": "h", "points": ["工具广度 43 种 —— 高频 Bash 372"]},
+        "depth": {"headline": "h", "points": ["override 393 次 —— 远超 error 173"]},
+        "outcome": {"headline": "h", "points": ["落地 416 —— 后半窗起量"], "landed": 416, "total": 453},
+        "evidence": [{"pointer": "/a.jsonl#u", "behavior": "纠正方法论"}],
+    }
+
+
+def _min_meta():
+    return {"generated_at": "2026-06-14T09:29:00", "included_projects": [], "run": None}
+
+
+def test_posture_fullwidth_no_two_col_grid():
+    from ai_coding_insights.report import render_profile_report
+    html = render_profile_report(_min_profile(), _min_meta(), metrics=None)
+    assert "posture-grid" not in html
+    assert "posture-full" in html
