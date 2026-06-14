@@ -139,3 +139,30 @@ def test_timeline_bars_height_and_bucket():
 def test_timeline_bars_empty():
     assert _timeline_bars([]) == []
     assert _timeline_bars(None) == []
+
+
+def test_timeline_bars_bucket_boundaries():
+    daily = [{"date": f"2026-06-{d:02d}", "session_count": c} for d, c in
+             [(1, 5), (2, 6), (3, 12), (4, 13), (5, 20), (6, 21)]]
+    by_count = {b["count"]: b["color"] for b in _timeline_bars(daily)}
+    assert by_count[5] == "#c6e7da"
+    assert by_count[6] == "#6fc9b0"
+    assert by_count[12] == "#6fc9b0"
+    assert by_count[13] == "#2d9d7e"
+    assert by_count[20] == "#2d9d7e"
+    assert by_count[21] == "#1a6b5a"
+
+
+def test_timeline_bars_zero_count_bucket():
+    bars = _timeline_bars([{"date": "2026-06-01", "session_count": 0},
+                           {"date": "2026-06-02", "session_count": 10}])
+    z = next(b for b in bars if b["count"] == 0)
+    assert z["color"] == "#ebedf0"
+    assert z["height_pct"] == 0.0
+
+
+def test_timeline_bars_sorts_ascending():
+    bars = _timeline_bars([{"date": "2026-06-14", "session_count": 1},
+                           {"date": "2026-06-01", "session_count": 2},
+                           {"date": "2026-06-07", "session_count": 3}])
+    assert [b["date"] for b in bars] == ["2026-06-01", "2026-06-07", "2026-06-14"]

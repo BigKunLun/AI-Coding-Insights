@@ -226,9 +226,8 @@ def _render_daily_timeline(daily, idx: int) -> str:
     mx = max(b["count"] for b in bars)
     cols = ""
     for b in bars:
-        peak = ' tl-peak' if b["count"] == mx else ''
         val = f'<span class="tl-val">{b["count"]}</span>' if b["count"] == mx else ''
-        cols += (f'<div class="tl-bar{peak}" style="height:{max(b["height_pct"],2):.1f}%;'
+        cols += (f'<div class="tl-bar" style="height:{max(b["height_pct"],2):.1f}%;'
                  f'background:{b["color"]}" title="{escape(b["date"])}：{b["count"]} 会话">{val}</div>')
     first, last = bars[0]["date"], bars[-1]["date"]
     return (
