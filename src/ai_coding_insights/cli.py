@@ -537,24 +537,25 @@ def _cmd_auto_scan(args) -> int:
     return 0
 
 
-# 本机可再生产物的白名单（相对 state_dir 的名字）。承重：清单写死在此，绝不含
-# config.toml（在 ~/.claude 那棵树下）与 sessions 原文——reset 只清自己产出的东西。
-# 这 5 个 basename 是横跨 4 处真相源的「汇聚契约」（见 CLAUDE.md 接缝一节）：snapshots
-# 引用 DEFAULT_SNAPSHOT_DIR 而非字面量，常量改名即随动；其余 4 个的真相源在 bash hook /
-# SKILL.md / auto-scan 局部变量里，无 Python 常量可引，改它们须手动同步此处。
-_RESET_PRODUCTS = (DEFAULT_SNAPSHOT_DIR.name, "reports", "run",
-                   ".auto-scan.lock", "auto-scan.log")
+# 删除白名单（相对 state_dir 的名字）。承重：清单写死在此，绝不含 config.toml（在
+# ~/.claude 那棵树下）与 sessions 原文——reset 只清自己产出的东西。这 4 个 basename 横跨
+# 3 处真相源（见 CLAUDE.md 接缝一节）：snapshots 引用 DEFAULT_SNAPSHOT_DIR 随动；reports /
+# run 的真相源在 bash hook / SKILL.md，无 Python 常量可引，改它们须手动同步此处。
+# 注意 .auto-scan.lock 故意不在删除集——它由 reset「置今日」而非删除（见 _cmd_reset）。
+_RESET_PRODUCTS = (DEFAULT_SNAPSHOT_DIR.name, "reports", "run", "auto-scan.log")
 
 
 def reset_targets(state_dir: Path) -> list[Path]:
-    """纯函数：返回该清的产物路径（按白名单，不做存在性判断/不碰 IO）。"""
+    """纯函数：返回该删的产物路径（删除白名单，不含 lock，不做存在性判断/不碰 IO）。"""
     return [state_dir / name for name in _RESET_PRODUCTS]
 
 
 def _cmd_reset(args) -> int:
-    """清掉本机可再生产物，让用户干净重测（解除 30 天增量窗口闸门）。
+    """清空本机可再生产物 + 接管当日 auto-scan 锁，让用户干净重测。
 
-    只删 --state-dir 下的已知产物白名单；--dry-run 只列不删。
+    删 --state-dir 下的白名单产物；并把今日写进 .auto-scan.lock——SessionEnd 的
+    auto-scan 见今日锁即整天跳过，不会抢先写今日快照重新武装 30 天闸门（删锁反而
+    解除抑制，正是「reset 后重跑仍 too_soon」的根因）。--dry-run 只列不动。
     """
     state_dir = Path(args.state_dir).expanduser()
     dry = args.dry_run
@@ -574,12 +575,19 @@ def _cmd_reset(args) -> int:
                 target.unlink(missing_ok=True)
         removed.append(target)
 
+    # 接管当日锁：把今日写进 lock，压住 SessionEnd 的 auto-scan 抢占刚清空的游标。
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    lock = state_dir / ".auto-scan.lock"
+    if not dry:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        lock.write_text(today, encoding="utf-8")
+
     verb = "将删" if dry else "已删"
-    if removed:
-        for t in removed:
-            print(f"{verb}: {t.name}")
-    else:
-        print(f"无产物可清：{state_dir}")
+    for t in removed:
+        print(f"{verb}: {t.name}")
+    if not removed:
+        print(f"（无产物可删，{state_dir} 本已干净）")
+    print(f"{'将置' if dry else '已置'}: {lock.name} ← {today}（今日 auto-scan 不再抢占）")
     return 0
 
 

@@ -26,7 +26,7 @@ uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-co
 - `verify-obs` —— 校验 LLM 观测（obs）对批次的覆盖与 posture 计数完整性。
 - `render-profile` —— 渲染最终画像 HTML 报告。
 - `auto-scan` —— `SessionEnd` hook 后台自动评估（接线在 `hooks/hooks.json`；自带 lock 防重入 + 滚动日志，失败对用户静默）。
-- `reset` —— 清掉本机可再生产物（`snapshots/` / `reports/` / `run/` / `.auto-scan.lock` / `auto-scan.log`），解除 30 天增量窗口闸门以便干净重测；按白名单删、`--dry-run` 只预览，永不碰 `config.toml` 与会话原文。slash 入口 `commands/reset.md`。
+- `reset` —— 清空本机可再生产物（`snapshots/` / `reports/` / `run/` / `auto-scan.log`）解除 30 天增量窗口闸门，**并把今日写进 `.auto-scan.lock`**（而非删它），压住 `SessionEnd` 的 auto-scan 当天抢先写新快照重新武装闸门——这是「reset 后重跑仍 too_soon」的根因修复。按白名单删、`--dry-run` 只预览，永不碰 `config.toml` 与会话原文。slash 入口 `commands/reset.md`。
 
 ## 架构原则
 
@@ -41,7 +41,8 @@ uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-co
 - **中间 JSON**（落 `--emit-batches` 目录）：`batch-NN.json`（LLM 分批输入）、`obs-*.json`（extractor 产出）、`_window.json`、`_aggregate.json`（已剥掉含项目名的 `project_breakdown`，含 `parse_health` / `customization_signals` 等字段）、`profile.json`（合成画像）。
 - **CLI 参数**：`render-profile` 的 `--metrics` / `--window` / `--obs-glob` / `--run-*`。
 - **profile schema**：`profile_schema.py`。
-- **reset 产物白名单**（`cli.py` 的 `_RESET_PRODUCTS`）：是横跨 4 处真相源的「汇聚契约」——`snapshots`（已引用 `DEFAULT_SNAPSHOT_DIR` 随动）、`reports`（`hooks/auto-scan-hook.sh` 的 `REPORT_DIR`）、`run`（SKILL.md 的 `--emit-batches` 落点）、`.auto-scan.lock` / `auto-scan.log`（`auto-scan` 的 state 目录）。**改任一落点须同步此白名单**，否则 reset 静默漏删 → 30 天闸门不解除。
+- **reset 删除白名单**（`cli.py` 的 `_RESET_PRODUCTS`）：横跨 3 处真相源的「汇聚契约」——`snapshots`（引用 `DEFAULT_SNAPSHOT_DIR` 随动）、`reports`（`hooks/auto-scan-hook.sh` 的 `REPORT_DIR`）、`run`（SKILL.md 的 `--emit-batches` 落点）、`auto-scan.log`。**改任一落点须同步此白名单**，否则 reset 静默漏删 → 30 天闸门不解除。
+- **reset ↔ auto-scan 锁协议**：`.auto-scan.lock` 内容为 UTC `%Y-%m-%d`；`auto-scan` 见锁等于今日即整天跳过（`_cmd_auto_scan` 顶部），`reset` 借此把今日写进锁来压住抢占。**改锁格式/路径须三处同步**（auto-scan 写锁、auto-scan 读锁、reset 置锁）。
 
 ## 不变约束（定位级，违反即 bug）
 
