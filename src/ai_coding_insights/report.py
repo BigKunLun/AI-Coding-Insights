@@ -20,17 +20,16 @@ _RADAR_DEPTH_FULL_TURNS = 20.0  # P90 轮次 20 打满（取 P90 后上限上浮
 # 章节号    ui-monospace 12px，按节循环 #0891b2 → #22a3c4 → #4f46e5 → #6366f1 →
 #           #7c87f5 → #8b5cf6 → #a78bfa
 # 数字      一律 font-variant-numeric: tabular-nums
-# 板块顺序  横幅结论 → 01指标明细 → 02高光 → 03姿势+判据 → 04画像+详述 →
-#           05摩擦建议 → 06能力盲区 → 07趋势 → 附录A Token(默认展开) → 附录B 证据链(折叠)
+# 板块顺序  以装配块（render_profile_report 内 `# 0N 段名`）为唯一真相源，本处不复述
 # 去重规则  横幅四数 = 四维代表值(成果·落地率 / 姿势·L4主导 / 水平·工具广度 / 深度·轮次)，
-#           01 指标明细不重复横幅出现过的数，按族补齐明细(合入、编辑/合入、模型切换等)
+#           指标明细不重复横幅出现过的数，按族补齐明细(合入、编辑/合入、模型切换等)
 
 _SEC_COLORS = ["#0891b2", "#22a3c4", "#4f46e5", "#6366f1", "#7c87f5", "#8b5cf6", "#a78bfa"]
 # 姿势序列 L1→L4（横幅/堆叠条/图例共用）
 _POSTURE_COLORS = {"L1": "#c7eaf4", "L2": "#76c7e6", "L3": "#6e8ef2", "L4": "#4640d9"}
 # 高光序号圆点配色（按条目循环）
 _HL_DOT = [("#d7f3fa", "#0e7490"), ("#e3e6fd", "#4338ca"), ("#ede7fc", "#6d28d9")]
-# 维度色（04 详述行 + 卡片角标）
+# 维度色（详述行 + 卡片角标）
 _DIM_COLORS = {"姿势": "#0891b2", "水平": "#4f46e5", "深度": "#7c3aed", "成果": "#0d9488"}
 
 
@@ -339,7 +338,7 @@ def _ptr_chip(entry: dict, projects: list) -> str:
 
 
 def _render_highlights_section(highlights: list | None, projects: list, idx: int) -> str:
-    """02 高光时刻；空则返回空串。behavior/pointer 来自 LLM，escape。"""
+    """高光时刻；空则返回空串。behavior/pointer 来自 LLM，escape。"""
     highlights = highlights or []
     if not highlights:
         return ""
@@ -362,7 +361,7 @@ def _render_highlights_section(highlights: list | None, projects: list, idx: int
 def _render_capabilities_section(tool_session_counts: dict | None, idx: int,
                                   customization_signals: dict | None = None,
                                   metrics: dict | None = None) -> str:
-    """06 能力盲区；label/scene 为内置文案，仍统一 escape 求稳。"""
+    """能力盲区；label/scene 为内置文案，仍统一 escape 求稳。"""
     gaps_cap = unused_capabilities(tool_session_counts or {},
                                     customization_signals=customization_signals,
                                     metrics=metrics)
@@ -693,7 +692,7 @@ def render_profile_report(profile: dict, meta: dict,
         for c, v, l in hero_nums
     )
 
-    # ---- 01 指标明细：三族，不重复横幅四数 ----
+    # ---- 指标明细：三族，不重复横幅四数 ----
     # 不渲染「编辑/落地」派生比率：edit_count 是全会话编辑量、git_landed 是 git 锚落地数，
     # 跨口径相除（分子分母分属不同总体）无 per-commit 语义。只陈列两个原值。
     token_usage = m.get("token_usage") or {}
@@ -744,7 +743,7 @@ def render_profile_report(profile: dict, meta: dict,
             f'<div class="m-grid">{cell_html}</div></div>'
         )
 
-    # ---- 03 姿势分布 + 档位判据 ----
+    # ---- 姿势分布 + 档位判据 ----
     total_pd = sum(pct(t) for t in ("L1", "L2", "L3", "L4")) or 1.0
     legend_html = "".join(
         f'<div class="lg-row"><span class="lg-swatch" style="background:{_POSTURE_COLORS[code]}"></span>'
@@ -775,7 +774,7 @@ def render_profile_report(profile: dict, meta: dict,
         '</div>'
     )
 
-    # ---- 04 四维雷达 + 维度详述 ----
+    # ---- 四维雷达 + 维度详述 ----
     axis_posture = max(0.0, min(1.0, pct("L3") + pct("L4")))
     tb = mval("tool_breadth")
     axis_breadth = min(float(tb) / _RADAR_BREADTH_FULL, 1.0) if tb is not None else 0.0
@@ -839,7 +838,7 @@ def render_profile_report(profile: dict, meta: dict,
         + _depth_card(depth)
     )
 
-    # ---- 05 摩擦 + 建议 ----
+    # ---- 摩擦 + 建议 ----
     projects = meta.get("included_projects", []) or []
     frictions = profile.get("frictions", []) or []
     fr_items = ""
@@ -950,6 +949,8 @@ def render_profile_report(profile: dict, meta: dict,
         idx += 1
         sections.append(trend_html)
     # 08 能力盲区
+    # 恒非空（有「已覆盖✓」兜底），故先 idx += 1 直接占号、传裸 idx；
+    # 不像 05/06/07/09 那些可空段那样先用 idx+1 偷看、命中才提交。
     if metrics is not None:
         idx += 1
         sections.append(_render_capabilities_section(m.get("tool_session_counts"), idx,
@@ -1033,7 +1034,7 @@ b{{font-weight:700}}
 .tag-advice{{color:#b45309;background:#fdeac2}}
 .tag-unused{{color:#6d28d9;background:#ede7fc;transform:translateY(2px)}}
 .tag-ok{{color:#15803d;background:#dcfce7;transform:translateY(2px)}}
-/* ---- 01 指标明细 ---- */
+/* ---- metrics ---- */
 .fam-card{{padding:4px 22px}}
 .fam{{padding:16px 0;border-bottom:1px solid #eef0f5}}
 .fam-last{{border-bottom:none}}
@@ -1046,7 +1047,7 @@ b{{font-weight:700}}
 .m-lbl{{font-size:12px;color:#667085;margin-top:2px}}
 .delta{{font-weight:700;font-size:.95em;font-family:ui-monospace,'SF Mono',Menlo,monospace;
   font-variant-numeric:tabular-nums}}
-/* ---- 05 高光时刻 ---- */
+/* ---- highlights ---- */
 .hl-card{{padding:8px 22px}}
 .hl-row{{display:flex;align-items:baseline;gap:12px;padding:13px 0;border-bottom:1px solid #eef0f5}}
 .hl-last{{border-bottom:none}}
@@ -1055,7 +1056,7 @@ b{{font-weight:700}}
 .hl-text{{font-size:13.5px;color:#54607a;line-height:1.65;flex:1}}
 .hl-link{{font-size:12px;color:#0e7490;white-space:nowrap;font-weight:500;cursor:help}}
 .ptr-miss{{color:#b45309;font-size:11px;font-weight:700;white-space:nowrap}}
-/* ---- 02 姿势 + 判据 ---- */
+/* ---- posture ---- */
 .posture-full{{padding:24px 26px}}
 .stack-big{{display:flex;width:100%;height:44px;border-radius:9px;overflow:hidden;font-size:13px;font-weight:700;margin-top:6px}}
 .bseg{{display:flex;align-items:center;justify-content:center}}
@@ -1067,16 +1068,12 @@ b{{font-weight:700}}
 .crit-cap-miss{{color:#b42318}}
 .lg-row{{display:flex;gap:8px}}
 .lg-swatch{{flex:0 0 auto;width:10px;height:10px;border-radius:3px;transform:translateY(4px)}}
-.stage-panel{{padding:20px 22px;display:flex;flex-direction:column}}
-.stage-panel .card-title{{margin-bottom:12px}}
 .crit-list{{display:grid;gap:10px;font-size:13px;color:#475467}}
 .crit-row{{display:flex;justify-content:space-between;gap:10px}}
 .crit-ok{{color:#15803d;font-weight:700;font-variant-numeric:tabular-nums}}
 .crit-miss{{color:#b42318;font-weight:700;font-variant-numeric:tabular-nums}}
 .crit-na{{color:#667085}}
-.crit-gap{{color:#667085;font-size:11.5px;font-weight:700;margin-top:4px}}
-.stage-note{{margin-top:auto;padding-top:12px}}
-/* ---- 03 画像 + 详述 ---- */
+/* ---- dimensions ---- */
 .radar-card{{padding:22px;display:grid;grid-template-columns:320px 1fr;gap:8px 26px;
   align-items:center}}
 .radar{{margin:0 auto;display:block}}
@@ -1105,12 +1102,12 @@ b{{font-weight:700}}
 .depth-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
 .depth-cell{{background:#f8f9fc;border-radius:10px;padding:14px 16px}}
 .depth-desc{{font-size:12.5px;line-height:1.65;margin-top:4px}}
-/* ---- 04 摩擦建议 ---- */
+/* ---- friction ---- */
 .fr-list{{display:grid;gap:12px}}
 .fr-card{{padding:18px 22px}}
 .fr-obs{{font-size:13.5px;color:#344054;line-height:1.7}}
 .fr-ptrs{{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}}
-/* ---- 06 活动热力（时间线柱状）---- */
+/* ---- timeline ---- */
 .tl-wrap{{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid #e1e5ef;margin-top:8px}}
 .tl-bar{{flex:1;border-radius:3px 3px 0 0;position:relative;min-height:2px}}
 .tl-val{{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#1a6b5a;font-weight:700}}
@@ -1128,15 +1125,15 @@ b{{font-weight:700}}
 .fr-box{{display:flex;gap:10px;margin-top:10px;background:#fffaeb;border:1px solid #fdeac2;
   border-radius:8px;padding:10px 14px}}
 .fr-sug{{font-size:13px;color:#57534e;line-height:1.7}}
-/* ---- 08 能力盲区 ---- */
+/* ---- capabilities ---- */
 .cap-card{{padding:18px 22px;display:grid;gap:10px}}
 .cap-row{{display:flex;gap:12px;font-size:13.5px;color:#344054;line-height:1.7}}
-/* ---- 06b health 段（版本漂移雷达）---- */
+/* ---- health ---- */
 .health-card{{padding:16px 20px;font-size:13px;line-height:1.7}}
 .health-span{{color:#54607a}}
 .health-flag{{margin-top:6px;padding:8px 12px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;color:#991b1b}}
 .health-unknown{{margin-top:8px;color:#667085}}
-/* ---- 07 趋势 / 09 健康卡 / 附录表格 ---- */
+/* ---- trend ---- */
 .trend-card{{padding:8px 22px 16px}}
 table.trend{{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}}
 table.trend th{{padding:12px 8px 9px;text-align:left;font-size:12px;color:#667085;
