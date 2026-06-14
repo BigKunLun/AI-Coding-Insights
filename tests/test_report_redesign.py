@@ -204,6 +204,7 @@ def test_health_card_has_padding_class():
     html = _render_health_section(
         {"cc_version_span": {"min": "2.1.141", "max": "2.1.177", "distinct": 26}}, 9)
     assert "health-card" in html
+    assert html.count("数据健康") == 1        # 章节头已含，卡内不再重复标题
     assert "数据横跨" in html
     assert '<span class="n"' in html        # 版本数 26 被高亮
     assert "未见解析漂移" in html             # 无 flags → 补「未见漂移」文案
@@ -220,3 +221,18 @@ def test_tok_bar_fill_block_and_width():
         metrics={"tool_session_counts": {"Bash": 372, "Write": 278}})
     assert ".tok-bar{display:block" in html              # 填充块级化（修不可见 bug）
     assert '<span class="tok-bar" style="width:' in html  # 填充带宽度
+
+
+def test_full_render_timeline_not_heatmap():
+    # 整页防回归：活动热力是时间线柱状（tl-bar），旧错位日历（heatmap/h-cell）不得复活。
+    from ai_coding_insights.report import render_profile_report
+    html = render_profile_report(
+        _min_profile(), _min_meta(),
+        metrics={"daily": [{"date": "2026-06-12", "session_count": 5},
+                           {"date": "2026-06-13", "session_count": 9}],
+                 "parse_health": {"cc_version_span": {"min": "2.1.1", "max": "2.1.9", "distinct": 4}}})
+    assert 'class="tl-bar' in html and 'class="tl-wrap"' in html  # 时间线柱
+    # 旧错位日历 class 不得复活（带点精确匹配，避免 .depth-cell 等子串误伤）
+    assert ".heatmap" not in html
+    assert ".h-cell" not in html and ".h-grid" not in html
+    assert ".health-card{padding" in html                # 数据健康卡有内边距（修贴边）
