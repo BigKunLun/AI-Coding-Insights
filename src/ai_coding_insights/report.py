@@ -1006,7 +1006,9 @@ html{{-webkit-text-size-adjust:100%}}
 body{{font-family:system-ui,-apple-system,'PingFang SC','Segoe UI',sans-serif;
   color:#344054;background:#f3f5fa;min-height:100vh;line-height:1.5}}
 b{{font-weight:700}}
-.ink{{color:#101828}}
+.ink{{color:#1b2440}}
+.dim2{{color:#9aa3b2}}
+.n{{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:600;font-variant-numeric:tabular-nums}}
 .mono{{font-family:ui-monospace,'SF Mono',Menlo,monospace}}
 /* ---- 横幅 ---- */
 .hero{{background:
@@ -1036,7 +1038,7 @@ b{{font-weight:700}}
 .sec-num{{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;font-weight:700}}
 .sec-title{{font-size:15px;font-weight:700;color:#101828}}
 .sec-hint{{font-size:12.5px;color:#667085}}
-.card{{background:#fff;border:1px solid #e1e5ef;border-radius:12px}}
+.card{{background:linear-gradient(180deg,#fff,#fcfdff);border:1px solid #ebeef6;border-radius:14px;box-shadow:0 1px 2px rgba(20,28,52,.04),0 6px 16px rgba(20,28,52,.05)}}
 .card-title{{font-size:13px;font-weight:700;color:#101828}}
 .fine-note{{font-size:11.5px;color:#667085;line-height:1.6;margin-top:10px}}
 .sec-note{{margin-top:10px}}
