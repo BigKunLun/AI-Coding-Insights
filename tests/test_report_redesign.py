@@ -41,6 +41,13 @@ def test_hl_nums_plain_four_digits():
     assert '<span class="n" style="color:#4f46e5">1440</span>' in out
 
 
+def test_hl_nums_highlights_cjk_glued_number():
+    # CJK 不是单词边界：紧贴中文（无空格）的量级数字也应高亮，与带空格写法一致
+    assert '<span class="n" style="color:#4f46e5">43</span>' in _hl_nums("覆盖43种工具", "#4f46e5")
+    # 但 Lx 档位码内的数字仍不高亮（ASCII 字母 L 是边界）
+    assert "<span" not in _hl_nums("L3 引导为主", "#4f46e5")
+
+
 def test_hl_nums_empty_and_none():
     assert _hl_nums("", "#4f46e5") == ""
     assert _hl_nums(None, "#4f46e5") == ""
@@ -120,6 +127,18 @@ def test_posture_bseg_white_text_on_l4_regardless_of_position():
     assert f"background:{_POSTURE_COLORS['L4']};color:#ffffff" in html
 
 
+def test_posture_bseg_suppresses_label_on_narrow_segment():
+    from ai_coding_insights.report import render_profile_report
+    prof = _min_profile()
+    prof["posture_distribution"] = {"L1": 0.95, "L2": 0.03, "L3": 0.01, "L4": 0.01}
+    html = render_profile_report(prof, _min_meta(), metrics=None)
+    # 宽段（L1 95% ≥ 8%）内嵌标签
+    assert ">L1 95%</span>" in html
+    # 窄段（L2 3% < 8%）不塞标签（否则被 min-content 撑出真实宽度、溢出邻段被裁），
+    # 但 hover title 仍带占比，信息不丢
+    assert 'title="L2 3%"></span>' in html
+
+
 from ai_coding_insights.report import _render_highlights_section
 
 
@@ -179,6 +198,26 @@ def test_timeline_bars_sorts_ascending():
     assert [b["date"] for b in bars] == ["2026-06-01", "2026-06-07", "2026-06-14"]
 
 
+from ai_coding_insights.report import _render_daily_timeline
+
+
+def test_render_timeline_all_zero_no_peak_label():
+    # 全零 daily：无真峰值，不得给每柱都标「0」（旧逻辑 count==mx==0 会全标）
+    html = _render_daily_timeline(
+        [{"date": "2026-06-01", "session_count": 0},
+         {"date": "2026-06-02", "session_count": 0}], 6)
+    assert "tl-val" not in html
+
+
+def test_render_timeline_card_has_padding_and_peak_label():
+    # 活动热力卡必须带 padding 修饰类，否则柱/轴/注脚贴 14px 圆角边、峰值标签溢出卡顶
+    html = _render_daily_timeline(
+        [{"date": "2026-06-01", "session_count": 3},
+         {"date": "2026-06-02", "session_count": 9}], 6)
+    assert 'class="card tl-card"' in html
+    assert "tl-val" in html  # 有真峰值则标数值
+
+
 from ai_coding_insights.report import _bar_items, _render_tool_skill_mcp_appendix
 
 
@@ -236,3 +275,4 @@ def test_full_render_timeline_not_heatmap():
     assert ".heatmap" not in html
     assert ".h-cell" not in html and ".h-grid" not in html
     assert ".health-card{padding" in html                # 数据健康卡有内边距（修贴边）
+    assert ".tl-card{padding" in html                    # 活动热力卡同样有内边距（不贴边、峰值标签不溢出）

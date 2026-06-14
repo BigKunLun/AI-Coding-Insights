@@ -214,9 +214,9 @@ def test_dashboard_v5_structured_dimensions():
     assert "工具广度跨 8 类，覆盖检索/编辑/编排" in html
     assert 'class="dim-card-sub"' in html
     # outcome 仍附落地/丢弃（git 主锚口径：旧口径 metrics 缺 git 键退到 transcript 硬证据）；
-    # 数字此时按成果主题色高亮，故文案被 span 拆开，按非数字片段核对
-    assert "落地 " in html and "观测丢弃 " in html
-    assert '<span class="n" style="color:#0d9488">37</span>' in html
+    # 完整片段钉死分隔符与先后序：落地 37 ·（分隔）观测丢弃 9，数字各自高亮
+    assert ('落地 <span class="n" style="color:#0d9488">37</span> · '
+            '观测丢弃 <span class="n" style="color:#0d9488">9</span>') in html
 
 
 def test_dashboard_v5_frictions_block():
@@ -275,9 +275,9 @@ def test_dashboard_v5_compat_old_profile():
     # 无 frictions 时不出摩擦板块
     assert "摩擦 + 建议" not in html
     # 落地仍渲染（无 metrics → 兜底 LLM 抄值：landed=10、丢弃=total-landed=2）；
-    # 数字按成果主题色高亮，文案被 span 拆开
-    assert "落地 " in html and "观测丢弃 " in html
-    assert '<span class="n" style="color:#0d9488">10</span>' in html
+    # 完整片段钉死分隔符与先后序：落地 10 ·（分隔）观测丢弃 2，数字各自高亮
+    assert ('落地 <span class="n" style="color:#0d9488">10</span> · '
+            '观测丢弃 <span class="n" style="color:#0d9488">2</span>') in html
 
 
 # ---- Task 7: 六处新板块 ----

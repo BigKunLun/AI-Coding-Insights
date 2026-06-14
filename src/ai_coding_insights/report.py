@@ -206,13 +206,13 @@ def _render_daily_timeline(daily, idx: int) -> str:
     mx = max(b["count"] for b in bars)
     cols = ""
     for b in bars:
-        val = f'<span class="tl-val">{b["count"]}</span>' if b["count"] == mx else ''
+        val = f'<span class="tl-val">{b["count"]}</span>' if b["count"] == mx and mx > 0 else ''
         cols += (f'<div class="tl-bar" style="height:{max(b["height_pct"],2):.1f}%;'
                  f'background:{b["color"]}" title="{escape(b["date"])}：{b["count"]} 会话">{val}</div>')
     first, last = bars[0]["date"], bars[-1]["date"]
     return (
         _sec_header(idx, "活动热力")
-        + '<div class="card"><div class="tl-wrap">' + cols + '</div>'
+        + '<div class="card tl-card"><div class="tl-wrap">' + cols + '</div>'
         + f'<div class="tl-axis"><span>{escape(first)}</span><span>{escape(last)}</span></div>'
         + '<div class="fine-note">每柱为当日会话数，色深按当日活跃分档；峰值标数值。'
         '讲节奏趋势，与下文「窗口趋势」互证。</div></div>'
@@ -549,9 +549,11 @@ def _split_lead(text: str) -> str:
     return f'<b class="ink">{escape(lead)}</b> —— {escape(rest)}'
 
 
-# 独立数字 token：整数/带千分逗号/单一小数/可带尾 %；前后不得紧邻字母数字或 . - / :
-# （从而跳过版本号 2.1.141、日期 2026-06-14、标识符 opus-4-8 内的数字）
-_NUM_RE = re.compile(r'(?<![\w./:-])(\d+(?:,\d{3})*(?:\.\d+)?%?)(?![\w./:-])')
+# 独立数字 token：整数/带千分逗号/单一小数/可带尾 %；前后不得紧邻 ASCII 字母数字或 . - / : _
+# （从而跳过版本号 2.1.141、日期 2026-06-14、标识符 opus-4-8、档位码 L3 内的数字）。
+# 界用 [A-Za-z0-9_] 而非 \w：\w 在 Python 下含 CJK，会把「43种」这类紧贴中文的数字
+# 误当标识符内部而漏掉高亮——中文不是单词边界，紧贴中文的量级数字应与带空格写法一致高亮。
+_NUM_RE = re.compile(r'(?<![A-Za-z0-9_./:-])(\d+(?:,\d{3})*(?:\.\d+)?%?)(?![A-Za-z0-9_./:-])')
 
 
 def _hl_nums(raw, color: str) -> str:
@@ -756,11 +758,22 @@ def render_profile_report(profile: dict, meta: dict,
     # 大堆叠条：段内嵌百分比；宽度公式照搬旧 segs（pct(t)/total_pd*100），只是放大+内嵌文字。
     # 段内文字色按档位身份定（非 DOM 位置）：L1-L3 浅/中底用深字，仅 L4 深底用白字
     _BSEG_INK = {"L1": "#0e3a4a", "L2": "#0e3a4a", "L3": "#0e3a4a", "L4": "#ffffff"}
-    big_segs = "".join(
-        f'<span style="width:{pct(t)/total_pd*100:.2f}%;background:{_POSTURE_COLORS[t]};color:{_BSEG_INK[t]}" '
-        f'class="bseg" title="{t} {pct(t):.0%}">{t} {pct(t):.0%}</span>'
-        for t in ("L1", "L2", "L3", "L4") if pct(t) > 0
-    )
+    # 段宽占比低于此阈值放不下「Lx NN%」标签：硬塞会被 min-content 撑出真实宽度、
+    # 文字溢进邻段又被 .stack-big 的 overflow:hidden 裁成半字，故窄段留纯色块
+    # （占比在下方 lg-grid 图例完整呈现，hover title 仍带 Lx NN%，信息不丢）。
+    _BSEG_LABEL_MIN = 0.08
+    seg_parts = []
+    for t in ("L1", "L2", "L3", "L4"):
+        frac = pct(t) / total_pd
+        if frac <= 0:
+            continue
+        label = f"{t} {pct(t):.0%}" if frac >= _BSEG_LABEL_MIN else ""
+        seg_parts.append(
+            f'<span class="bseg" style="width:{frac*100:.2f}%;'
+            f'background:{_POSTURE_COLORS[t]};color:{_BSEG_INK[t]}" '
+            f'title="{t} {pct(t):.0%}">{label}</span>'
+        )
+    big_segs = "".join(seg_parts)
     crit_html = _render_stage_criteria_inline(stage) if stage is not None else ""
     posture_sec_title = "姿势分布与档位判据" if stage is not None else "姿势分布"
     posture_section_body = (
@@ -948,14 +961,16 @@ def render_profile_report(profile: dict, meta: dict,
     if trend_html:
         idx += 1
         sections.append(trend_html)
-    # 08 能力盲区
-    # 恒非空（有「已覆盖✓」兜底），故先 idx += 1 直接占号、传裸 idx；
-    # 不像 05/06/07/09 那些可空段那样先用 idx+1 偷看、命中才提交。
+    # 08 能力盲区：与可空段统一用「idx+1 偷看、命中才提交」。capabilities 当前恒非空
+    # （unused_capabilities 为空时有「已覆盖✓」兜底），占号行为与旧版逐字节一致；
+    # 改成同构只为消掉「这一段特殊」的记忆负担——未来若改成可早退空串也不会烧号留洞。
     if metrics is not None:
-        idx += 1
-        sections.append(_render_capabilities_section(m.get("tool_session_counts"), idx,
-                                                      customization_signals=m.get("customization_signals"),
-                                                      metrics=m))
+        cap_html = _render_capabilities_section(m.get("tool_session_counts"), idx + 1,
+                                                customization_signals=m.get("customization_signals"),
+                                                metrics=m)
+        if cap_html:
+            idx += 1
+            sections.append(cap_html)
     # 09 数据健康
     health_html = _render_health_section(m.get("parse_health"), idx + 1)
     if health_html:
@@ -1059,7 +1074,7 @@ b{{font-weight:700}}
 /* ---- posture ---- */
 .posture-full{{padding:24px 26px}}
 .stack-big{{display:flex;width:100%;height:44px;border-radius:9px;overflow:hidden;font-size:13px;font-weight:700;margin-top:6px}}
-.bseg{{display:flex;align-items:center;justify-content:center}}
+.bseg{{display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden;white-space:nowrap}}
 .lg-grid{{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px;margin-top:16px;font-size:12.5px;color:#54607a;line-height:1.5}}
 .crit-cols{{display:flex;gap:30px;margin-top:20px;padding-top:16px;border-top:1px solid #eef0f5;flex-wrap:wrap}}
 .crit-col{{flex:1;min-width:200px}}
@@ -1108,6 +1123,7 @@ b{{font-weight:700}}
 .fr-obs{{font-size:13.5px;color:#344054;line-height:1.7}}
 .fr-ptrs{{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}}
 /* ---- timeline ---- */
+.tl-card{{padding:20px 22px 16px}}
 .tl-wrap{{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid #e1e5ef;margin-top:8px}}
 .tl-bar{{flex:1;border-radius:3px 3px 0 0;position:relative;min-height:2px}}
 .tl-val{{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#1a6b5a;font-weight:700}}
