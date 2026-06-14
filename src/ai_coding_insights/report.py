@@ -239,6 +239,36 @@ def _render_daily_timeline(daily, idx: int) -> str:
     )
 
 
+def _bar_items(counts: dict, top_n: int = 15) -> tuple[list, float]:
+    """降序取 Top N 项 + 最大值。返回 ([(name, count), ...], mx)。counts 为空返回 ([], 0.0)。"""
+    if not counts:
+        return [], 0.0
+    items = sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:top_n]  # 同计数按名排序，避免跨进程顺序不定
+    mx = items[0][1] if items else 1
+    return items, float(mx)
+
+
+def _bar_section(counts: dict, title: str, top_n: int = 15) -> str:
+    """渲染一组降序条形图：标题 + 条形列表。counts 为空返回空串。
+    每行三子元素对齐三列：名 | 彩条轨道(只含填充) | 数值(右对齐)。"""
+    items, mx = _bar_items(counts, top_n=top_n)
+    if not items:
+        return ""
+    bars = ""
+    for name, cnt in items:
+        w = (cnt / mx * 100.0) if mx else 0.0
+        bars += (
+            f'<div class="tok-row"><span class="tok-label" title="{escape(name)}">'
+            f'{escape(name)}</span>'
+            f'<span class="tok-bar-wrap"><span class="tok-bar" style="width:{w:.1f}%"></span></span>'
+            f'<span class="tok-val">{cnt}</span></div>'
+        )
+    return (
+        f'<details class="tok-block" open><summary><b>{escape(title)}</b></summary>'
+        f'<div class="tok-chart">{bars}</div></details>'
+    )
+
+
 def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
                                       skill_counts: dict | None,
                                       mcp_server_counts: dict | None) -> str:
@@ -246,36 +276,10 @@ def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
     if not tool_session_counts and not skill_counts and not mcp_server_counts:
         return ""
 
-    def _bar_items(counts: dict, top_n: int = 15) -> tuple[list, float]:
-        if not counts:
-            return [], 0.0
-        items = sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:top_n]  # 同计数按名排序，避免跨进程顺序不定
-        mx = items[0][1] if items else 1
-        return items, float(mx)
-
-    def _bar_section(counts: dict, title: str) -> str:
-        """渲染一组降序条形图：标题 + 条形列表。counts 为空返回空串。"""
-        items, mx = _bar_items(counts)
-        if not items:
-            return ""
-        bars = ""
-        for name, cnt in items:
-            w = (cnt / mx * 100.0) if mx else 0.0
-            bars += (
-                f'<div class="tok-row"><span class="tok-label" title="{escape(name)}">'
-                f'{escape(name)}</span><span class="tok-bar-wrap">'
-                f'<span class="tok-bar" style="width:{w:.1f}%"></span>'
-                f'<span class="tok-val">{cnt}</span></span></div>'
-            )
-        return (
-            f'<details class="tok-block" open><summary><b>{escape(title)}</b></summary>'
-            f'<div class="tok-chart">{bars}</div></details>'
-        )
-
     sections = ""
-    sections += _bar_section(tool_session_counts or {}, "高频工具 Top 15")
-    sections += _bar_section(skill_counts or {}, "技能频次")
-    sections += _bar_section(mcp_server_counts or {}, "MCP Server 频次")
+    sections += _bar_section(tool_session_counts or {}, "高频工具 Top 10", top_n=10)
+    sections += _bar_section(skill_counts or {}, "技能频次 Top 8", top_n=8)
+    sections += _bar_section(mcp_server_counts or {}, "MCP Server Top 8", top_n=8)
     return sections
 
 
@@ -1125,10 +1129,11 @@ b{{font-weight:700}}
 .tok-block summary{{cursor:pointer;font-size:13px;font-weight:600;color:#475467;padding:4px 0;list-style:none}}
 .tok-block summary::-webkit-details-marker{{display:none}}
 .tok-chart{{margin-top:8px;display:grid;gap:5px}}
-.tok-row{{display:grid;grid-template-columns:220px 1fr 70px;gap:12px;align-items:center;font-size:13px}}
-.tok-label{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#344054;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
-.tok-bar-wrap{{height:10px;border-radius:3px;background:#eef1f6;overflow:hidden}}
-.tok-bar{{height:100%;border-radius:3px;background:linear-gradient(90deg,#22a3c4,#6366f1)}}
+.tok-row{{display:grid;grid-template-columns:160px 1fr 48px;gap:9px 12px;align-items:center;font-size:12.5px}}
+.tok-label{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#54607a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.tok-bar-wrap{{height:9px;border-radius:4px;background:#eef1f6;overflow:hidden}}
+.tok-bar{{height:100%;border-radius:4px;background:linear-gradient(90deg,#6e8ef2,#4f46e5)}}
+.tok-val{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#1b2440;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}}
 .fr-box{{display:flex;gap:10px;margin-top:10px;background:#fffaeb;border:1px solid #fdeac2;
   border-radius:8px;padding:10px 14px}}
 .fr-sug{{font-size:13px;color:#57534e;line-height:1.7}}
@@ -1164,7 +1169,6 @@ table.trend tbody tr:last-child td{{border-bottom:none}}
 .tok-name{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#475467}}
 .tok-track{{height:12px;border-radius:4px;background:#eef1f6;overflow:hidden}}
 .tok-fill{{height:100%;border-radius:4px}}
-.tok-val{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#101828;font-weight:600;font-variant-numeric:tabular-nums}}
 .tok-note{{margin-top:8px}}
 .tok-table{{margin-top:14px}}
 .tok-table td{{font-size:12.5px}}
@@ -1188,7 +1192,7 @@ table.trend tbody tr:last-child td{{border-bottom:none}}
   .m-grid{{grid-template-columns:repeat(2,1fr)}}
   .hero-nums{{gap:20px;flex-wrap:wrap}}
   /* 窄屏：固定大像素列会撑破容器/触发横滚——首列可缩 */
-  .tok-row{{grid-template-columns:minmax(80px,140px) 1fr 48px;gap:8px}}
+  .tok-row{{grid-template-columns:minmax(80px,140px) 1fr 44px;gap:8px}}
 }}
 @media print{{
   .hero{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}

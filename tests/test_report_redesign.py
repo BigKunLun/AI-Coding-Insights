@@ -166,3 +166,20 @@ def test_timeline_bars_sorts_ascending():
                            {"date": "2026-06-01", "session_count": 2},
                            {"date": "2026-06-07", "session_count": 3}])
     assert [b["date"] for b in bars] == ["2026-06-01", "2026-06-07", "2026-06-14"]
+
+
+from ai_coding_insights.report import _bar_items, _render_tool_skill_mcp_appendix
+
+
+def test_bar_items_topn():
+    counts = {f"t{i}": 100 - i for i in range(20)}
+    items, mx = _bar_items(counts, top_n=10)
+    assert len(items) == 10 and mx == 100
+
+
+def test_tok_row_three_columns_value_outside_bar():
+    html = _render_tool_skill_mcp_appendix({"Bash": 372, "Write": 278}, None, None)
+    # 数值在独立列、不再嵌在 bar-wrap 里
+    assert '<span class="tok-val">372</span>' in html
+    assert '<span class="tok-bar-wrap"><span class="tok-bar"' in html  # bar-wrap 只含填充
+    assert "Top 10" in html  # 工具标题改 10
