@@ -395,10 +395,12 @@ def _render_highlights_section(highlights: list | None, projects: list, idx: int
 
 
 def _render_capabilities_section(tool_session_counts: dict | None, idx: int,
-                                  customization_signals: dict | None = None) -> str:
+                                  customization_signals: dict | None = None,
+                                  metrics: dict | None = None) -> str:
     """06 能力盲区；label/scene 为内置文案，仍统一 escape 求稳。"""
     gaps_cap = unused_capabilities(tool_session_counts or {},
-                                    customization_signals=customization_signals)
+                                    customization_signals=customization_signals,
+                                    metrics=metrics)
     if not gaps_cap:
         inner = ('<div class="cap-row"><span class="tag tag-ok">已覆盖</span>'
                  '<span>高杠杆能力全部用过 ✓</span></div>')
@@ -952,7 +954,8 @@ def render_profile_report(profile: dict, meta: dict,
     if metrics is not None:
         idx += 1
         sections.append(_render_capabilities_section(m.get("tool_session_counts"), idx,
-                                                      customization_signals=m.get("customization_signals")))
+                                                      customization_signals=m.get("customization_signals"),
+                                                      metrics=m))
     health_html = _render_health_section(m.get("parse_health"), idx + 1)
     if health_html:
         idx += 1
