@@ -415,7 +415,7 @@ def _render_health_section(health: dict | None, idx: int) -> str:
                 f'（{escape(str(span.get("min")))}–{escape(str(span.get("max")))}）'
                 + ("，跨度内未见解析漂移" if not flags else "")
                 if span.get("min") and span.get("max") else "版本信息缺失")
-    body = f'<div class="health-cap">数据健康</div><div class="health-span">{span_txt}</div>'
+    body = f'<div class="health-span">{span_txt}</div>'
     if flags:
         rows = "".join(
             f'<div class="health-flag">⚠ 信号 <b>{escape(str(f.get("signal")))}</b> '
@@ -1143,7 +1143,6 @@ b{{font-weight:700}}
 .cap-row{{display:flex;gap:12px;font-size:13.5px;color:#344054;line-height:1.7}}
 /* ---- 06b health 段（版本漂移雷达）---- */
 .health-card{{padding:16px 20px;font-size:13px;line-height:1.7}}
-.health-cap{{font-size:11px;color:#9aa3b2;letter-spacing:.5px;margin-bottom:6px}}
 .health-span{{color:#54607a}}
 .health-flag{{margin-top:6px;padding:8px 12px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;color:#991b1b}}
 .health-unknown{{margin-top:8px;color:#667085}}
