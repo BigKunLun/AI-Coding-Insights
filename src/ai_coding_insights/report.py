@@ -1120,7 +1120,7 @@ b{{font-weight:700}}
 .tok-row{{display:grid;grid-template-columns:160px 1fr 48px;gap:9px 12px;align-items:center;font-size:12.5px}}
 .tok-label{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#54607a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .tok-bar-wrap{{height:9px;border-radius:4px;background:#eef1f6;overflow:hidden}}
-.tok-bar{{height:100%;border-radius:4px;background:linear-gradient(90deg,#6e8ef2,#4f46e5)}}
+.tok-bar{{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#6e8ef2,#4f46e5)}}
 .tok-val{{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#1b2440;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}}
 .fr-box{{display:flex;gap:10px;margin-top:10px;background:#fffaeb;border:1px solid #fdeac2;
   border-radius:8px;padding:10px 14px}}

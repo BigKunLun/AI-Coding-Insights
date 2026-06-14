@@ -209,3 +209,14 @@ def test_health_card_has_padding_class():
     assert "未见解析漂移" in html             # 无 flags → 补「未见漂移」文案
     # 版本号 min/max 走 escape，不该当数字高亮
     assert "2.1.141" in html and "2.1.177" in html
+
+
+def test_tok_bar_fill_block_and_width():
+    # 整页审查发现：tok-bar 是行内 span，行内盒子忽略 width/height → 彩条填充不可见。
+    # 必须 display:block 才能让 width:N% 渲染出可见填充。
+    from ai_coding_insights.report import render_profile_report
+    html = render_profile_report(
+        _min_profile(), _min_meta(),
+        metrics={"tool_session_counts": {"Bash": 372, "Write": 278}})
+    assert ".tok-bar{display:block" in html              # 填充块级化（修不可见 bug）
+    assert '<span class="tok-bar" style="width:' in html  # 填充带宽度
