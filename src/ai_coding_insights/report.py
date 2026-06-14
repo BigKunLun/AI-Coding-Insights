@@ -602,21 +602,22 @@ def _hl_nums(raw, color: str) -> str:
         lambda mo: f'<span class="n" style="color:{color}">{mo.group(1)}</span>', safe)
 
 
-def _dim_points_rows(points: list) -> str:
-    """维度卡分点列表：每行「标题（加粗）+ 次级描述」，按「——」拆分。"""
+def _dim_points_rows(points: list, color: str) -> str:
+    """维度卡分点：每条「洞察导语 —— 展开」。导语正常墨色+数字主题色高亮，展开走淡灰。"""
     rows = ""
-    for i, p in enumerate(points or []):
-        t, d = _lead_rest(p)
-        last = " pt-last" if i == len(points) - 1 else ""
-        desc = f'<div class="pt-desc">{escape(d)}</div>' if d is not None else ""
-        rows += f'<div class="pt-row{last}"><div class="pt-title">{escape(t)}</div>{desc}</div>'
+    pts = points or []
+    for i, p in enumerate(pts):
+        lead, rest = _lead_rest(p)
+        last = " pt-last" if i == len(pts) - 1 else ""
+        desc = f' <span class="pt-desc dim2">{_hl_nums(rest, color)}</span>' if rest is not None else ""
+        rows += f'<div class="pt-row{last}"><div class="pt-line">{_hl_nums(lead, color)}{desc}</div></div>'
     return rows
 
 
 def _dim_card(dim: str, title: str, block: dict, extra_rows: str = "") -> str:
     """维度详述卡（水平/成果）：色标 + 标题 + headline 副题 + 分点列表。"""
     head = escape(str(block.get("headline") or block.get("summary") or ""))
-    rows = _dim_points_rows(block.get("points") or [])
+    rows = _dim_points_rows(block.get("points") or [], _DIM_COLORS[dim])
     sub = f'<div class="dim-card-sub">{head}</div>' if head else ""
     return (
         '<div class="card dim-card">'
@@ -630,11 +631,12 @@ def _dim_card(dim: str, title: str, block: dict, extra_rows: str = "") -> str:
 def _depth_card(block: dict) -> str:
     """深度卡（通栏）：色标 + headline 副题 + 分点子卡网格（浅灰底）。"""
     head = escape(str(block.get("headline") or block.get("summary") or ""))
+    color = _DIM_COLORS["深度"]
     cells = ""
     for p in (block.get("points") or []):
-        t, d = _lead_rest(p)
-        desc = f'<div class="depth-desc">{escape(d)}</div>' if d is not None else ""
-        cells += f'<div class="depth-cell"><div class="pt-title">{escape(t)}</div>{desc}</div>'
+        lead, rest = _lead_rest(p)
+        desc = f'<div class="depth-desc dim2">{_hl_nums(rest, color)}</div>' if rest is not None else ""
+        cells += f'<div class="depth-cell"><div class="pt-line">{_hl_nums(lead, color)}</div>{desc}</div>'
     sub = f'<div class="dim-card-sub depth-sub">{head}</div>' if head else ""
     return (
         '<div class="card depth-card">'
@@ -855,8 +857,9 @@ def render_profile_report(profile: dict, meta: dict,
         dim_rows_html += (
             f'<div class="dim-row{last}">'
             f'<span class="dim-name" style="color:{_DIM_COLORS[name]}">{name}</span>'
-            f'<span class="dim-val">{value}<span class="dim-unit">{escape(unit)}</span></span>'
-            f'<span class="dim-desc">{desc}</span></div>'
+            f'<span class="dim-val n" style="color:{_DIM_COLORS[name]}">{value}'
+            f'<span class="dim-unit">{escape(unit)}</span></span>'
+            f'<span class="dim-desc">{_hl_nums(desc, _DIM_COLORS[name])}</span></div>'
         )
     radar_panel = (
         '<div class="card radar-card">'
@@ -868,8 +871,9 @@ def render_profile_report(profile: dict, meta: dict,
         '<div class="dim-cards">'
         + _dim_card("水平", "水平 · 工具广度", breadth)
         + _dim_card("成果", "成果 · 落地", outcome,
-                    extra_rows=(f'<div class="pt-row pt-last"><div class="pt-title">'
-                                f'落地 {landed_disp} · 观测丢弃 {dropped_disp}</div></div>'))
+                    extra_rows=(f'<div class="pt-row pt-last"><div class="pt-line">'
+                                f'{_hl_nums(f"落地 {landed_disp} · 观测丢弃 {dropped_disp}", _DIM_COLORS["成果"])}'
+                                f'</div></div>'))
         + '</div>'
         + _depth_card(depth)
     )
@@ -1110,7 +1114,7 @@ b{{font-weight:700}}
 .dim-val{{font-size:20px;font-weight:700;color:#101828;font-variant-numeric:tabular-nums;
   letter-spacing:-.4px}}
 .dim-unit{{font-size:11.5px;font-weight:500;color:#667085;margin-left:5px}}
-.dim-desc{{font-size:12.5px;color:#667085;line-height:1.55}}
+.dim-desc{{font-size:12.5px;color:#54607a;line-height:1.55}}
 .dim-cards{{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}}
 .dim-card{{padding:18px 22px 14px}}
 .dim-card-head{{display:flex;align-items:baseline;gap:8px}}
@@ -1118,9 +1122,9 @@ b{{font-weight:700}}
 .dim-card-title{{font-size:13.5px;font-weight:700;color:#101828}}
 .dim-card-sub{{font-size:12.5px;color:#667085;margin:4px 0 6px 16px}}
 .pt-list{{display:grid}}
-.pt-row{{padding:9px 0;border-bottom:1px solid #eef0f5}}
+.pt-row{{padding:10px 0;border-bottom:1px solid #eef0f5}}
 .pt-last{{border-bottom:none}}
-.pt-title{{font-size:13px;font-weight:700;color:#101828}}
+.pt-line{{font-size:13px;color:#54607a;line-height:1.85}}
 .pt-desc{{font-size:12.5px;color:#667085;line-height:1.55;margin-top:2px}}
 .depth-card{{padding:18px 22px 22px;margin-top:16px}}
 .depth-sub{{margin-bottom:14px}}

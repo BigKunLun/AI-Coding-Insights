@@ -44,3 +44,21 @@ def test_hl_nums_plain_four_digits():
 def test_hl_nums_empty_and_none():
     assert _hl_nums("", "#4f46e5") == ""
     assert _hl_nums(None, "#4f46e5") == ""
+
+
+from ai_coding_insights.report import _dim_points_rows
+
+
+def test_dim_points_no_bold_wall_and_highlights_number():
+    html = _dim_points_rows(["后台委托 292 次 —— 分布在 52 个会话"], "#4f46e5")
+    # 导语数字高亮
+    assert '<span class="n" style="color:#4f46e5">292</span>' in html
+    # 不再有整段加粗的 pt-title（旧实现走 font-weight:700 的 .pt-title）
+    assert 'pt-title' not in html
+    # 展开段走淡灰 class
+    assert 'dim2' in html
+
+
+def test_dim_points_qualitative_no_number_ok():
+    html = _dim_points_rows(["质疑成主导姿态，对幻觉有稳定警觉"], "#7c3aed")
+    assert "质疑成主导姿态" in html

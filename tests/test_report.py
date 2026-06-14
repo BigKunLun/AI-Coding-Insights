@@ -56,9 +56,13 @@ def test_render_profile_outcome_prefers_hard_metrics():
             "session_count": 1, "included_projects": []}
     metrics = {"commit_count": 40, "landed_count": 30, "landed_ratio": 0.75}
     html = render_profile_report(profile, meta, metrics=metrics)
-    # 旧口径 metrics（缺 git 键）→ 退到 transcript 硬证据：落地 30、丢弃 40-30=10
-    assert "落地 30 · 观测丢弃 10" in html
-    assert "落地 1 ·" not in html
+    # 旧口径 metrics（缺 git 键）→ 退到 transcript 硬证据：落地 30、丢弃 40-30=10。
+    # 数字按成果主题色高亮，文案被 span 拆开，按高亮 span 核对硬指标值。
+    assert "落地 " in html and "观测丢弃 " in html
+    assert '<span class="n" style="color:#0d9488">30</span>' in html
+    assert '<span class="n" style="color:#0d9488">10</span>' in html
+    # LLM 抄错的 landed=1 不得作为成果落地值出现
+    assert "落地 <span" in html and "落地 1" not in html
 
 
 def test_format_run_meta_full():

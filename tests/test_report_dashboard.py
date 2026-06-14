@@ -207,14 +207,16 @@ def test_dashboard_v5_window_and_local_time():
 
 def test_dashboard_v5_structured_dimensions():
     html = render_profile_report(PROFILE_V5, META_V5, METRICS_V5, DIFF_V5)
-    # 维度分点（详述卡分点行）
-    assert 'class="pt-title"' in html
+    # 维度分点（详述卡分点行：去加粗墙后走 pt-line）
+    assert 'class="pt-line"' in html
     assert "高频用 Grep 检索" in html
     # headline 进卡片副题
     assert "工具广度跨 8 类，覆盖检索/编辑/编排" in html
     assert 'class="dim-card-sub"' in html
-    # outcome 仍附落地/丢弃（git 主锚口径：旧口径 metrics 缺 git 键退到 transcript 硬证据）
-    assert "落地 37 · 观测丢弃 9" in html
+    # outcome 仍附落地/丢弃（git 主锚口径：旧口径 metrics 缺 git 键退到 transcript 硬证据）；
+    # 数字此时按成果主题色高亮，故文案被 span 拆开，按非数字片段核对
+    assert "落地 " in html and "观测丢弃 " in html
+    assert '<span class="n" style="color:#0d9488">37</span>' in html
 
 
 def test_dashboard_v5_frictions_block():
@@ -272,8 +274,10 @@ def test_dashboard_v5_compat_old_profile():
     assert "档位判据" not in html
     # 无 frictions 时不出摩擦板块
     assert "摩擦 + 建议" not in html
-    # 落地仍渲染（无 metrics → 兜底 LLM 抄值：landed=10、丢弃=total-landed=2）
-    assert "落地 10 · 观测丢弃 2" in html
+    # 落地仍渲染（无 metrics → 兜底 LLM 抄值：landed=10、丢弃=total-landed=2）；
+    # 数字按成果主题色高亮，文案被 span 拆开
+    assert "落地 " in html and "观测丢弃 " in html
+    assert '<span class="n" style="color:#0d9488">10</span>' in html
 
 
 # ---- Task 7: 六处新板块 ----
