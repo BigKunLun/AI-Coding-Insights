@@ -4,6 +4,9 @@ aci-report-*.html
 # 本地文档/草稿（不进 git）
 docs/
 
+# 视觉伴侣脑暴产物（临时 mockup，不进 git）
+.superpowers/
+
 # Python
 __pycache__/
 *.py[cod]
