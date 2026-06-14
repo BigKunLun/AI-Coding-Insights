@@ -409,7 +409,7 @@ def _render_highlights_section(highlights: list | None, projects: list, idx: int
         rows += (
             f'<div class="hl-row{last}">'
             f'<span class="hl-dot" style="background:{bg};color:{fg}">{i + 1}</span>'
-            f'<span class="hl-text">{escape(str(h.get("behavior", "")))}</span>'
+            f'<span class="hl-text">{_hl_nums(h.get("behavior", ""), "#0e7490")}</span>'
             f'<span class="hl-link" title="{escape(_ptr_label(h.get("pointer", ""), projects))}">原会话 ↗</span>{miss}'
             '</div>'
         )
@@ -1100,7 +1100,7 @@ b{{font-weight:700}}
 .hl-last{{border-bottom:none}}
 .hl-dot{{flex:0 0 auto;width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700;
   display:inline-flex;align-items:center;justify-content:center;transform:translateY(4px)}}
-.hl-text{{font-size:13.5px;color:#344054;line-height:1.65;flex:1}}
+.hl-text{{font-size:13.5px;color:#54607a;line-height:1.65;flex:1}}
 .hl-link{{font-size:12px;color:#0e7490;white-space:nowrap;font-weight:500;cursor:help}}
 .ptr-miss{{color:#b45309;font-size:11px;font-weight:700;white-space:nowrap}}
 /* ---- 03 姿势 + 判据 ---- */

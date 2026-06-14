@@ -107,3 +107,13 @@ def test_posture_bseg_white_text_on_l4_regardless_of_position():
     html = render_profile_report(prof, _min_meta(), metrics=None)
     # L4 段即便落在首位也必须白字（按身份着色，非 nth-child 位置）
     assert f"background:{_POSTURE_COLORS['L4']};color:#ffffff" in html
+
+
+from ai_coding_insights.report import _render_highlights_section
+
+
+def test_highlights_highlights_numbers_and_no_blackbold():
+    hl = [{"pointer": "/a.jsonl#u", "behavior": "凭框架机制推翻方案，AI 采纳重做，省去 3 轮返工"}]
+    html = _render_highlights_section(hl, [], 5)
+    assert '<span class="n"' in html  # 数字高亮
+    assert "原会话" in html
