@@ -118,3 +118,22 @@ def test_render_profile_run_meta_footer():
     # 无 run → 整行不出现
     meta2 = {k: v for k, v in meta.items() if k != "run"}
     assert "本报告运行约" not in render_profile_report(profile, meta2)
+
+
+def test_report_shows_posture_health_state():
+    from ai_coding_insights.report import render_profile_report
+    profile = {
+        "posture_distribution": {"L1": 0.2, "L2": 0.25, "L3": 0.4, "L4": 0.15},
+        "breadth": {"headline": "x"}, "depth": {"headline": "y"},
+        "outcome": {"headline": "z", "landed": 5, "total": 8},
+        "frictions": [], "evidence": [{"behavior": "b", "pointer": "/p.jsonl#u"}],
+    }
+    metrics = {"tool_breadth": 12, "turn_p90": 20, "active_days": 14,
+               "human_input_count": 400, "thinking_sessions": 2,
+               "decision_point_count": 100, "plan_mode_sessions": 1,
+               "landed_ratio": 0.62, "git_landed_count": 5}
+    html = render_profile_report(profile, {"included_projects": [], "session_count": 10,
+                                           "generated_at": "2026-06-15T00:00:00Z"},
+                                 metrics=metrics)
+    assert "姿态健康" in html and "健康" in html
+    assert "姿势 · L4 主导" not in html

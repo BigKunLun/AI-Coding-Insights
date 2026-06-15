@@ -3,7 +3,7 @@ import re
 from html import escape
 
 from .models import InsightsReport
-from .stage import decide_stage, normalize_posture
+from .stage import decide_stage, diagnose_posture, normalize_posture
 from .capabilities import unused_capabilities
 
 # 雷达图满刻度（与 stage.py 阶段阈值无关，仅控制可视化拉伸）：
@@ -63,12 +63,14 @@ def _sec_header(idx: int, title: str, hint: str = "", margin_top: bool = True) -
 
 
 def _stage_actual(key: str | None, values: dict) -> str:
-    """按判据的值键取实际值文本（如「40%」「29 种」）；兜底档 key=None 返回空串。
-    key 由 stage.py 的 _STAGES 结构化给出，不做判据文案匹配——文案随便改不会断渲染。"""
-    if key == "tool_breadth":
-        return f"{int(values.get(key, 0))} 种"
-    if key in ("L4", "L3+L4", "landed_ratio"):
-        return f"{values.get(key, 0):.0%}"
+    """按判据值键取实际值文本。计数键显示「N」带单位，无键返回空串。"""
+    if key is None:
+        return ""
+    units = {"active_days": " 天", "human_input_count": " 条",
+             "tool_breadth": " 种", "git_landed_count": " 次",
+             "depth_signal": "", "advanced_orchestration": " 项"}
+    if key in units:
+        return f"{int(values.get(key, 0))}{units[key]}"
     return ""
 
 
@@ -665,6 +667,9 @@ def render_profile_report(profile: dict, meta: dict,
         return "—" if v is None else f"{float(v):.0%}"
 
     l4 = pct("L4")
+    posture_diag = (None if metrics is None else diagnose_posture(
+        pd, m.get("decision_point_count", 0),
+        m.get("plan_mode_sessions", 0), m.get("thinking_sessions", 0)))
 
     def diff_html(key: str) -> str:
         if isinstance(diff, dict) and key in diff and isinstance(diff[key], dict):
@@ -684,7 +689,7 @@ def render_profile_report(profile: dict, meta: dict,
     tp90 = mval("turn_p90")
     hero_nums = [
         ("#67e8f9", pct0(landed_ratio), "成果 · 落地率"),
-        ("#a5b4fc", f"{l4:.0%}", "姿势 · L4 主导"),
+        ("#a5b4fc", escape(posture_diag["state"]) if posture_diag else "—", "姿态健康"),
         ("#5eead4", num(mval("tool_breadth")), "水平 · 工具广度"),
         ("#fcd34d", num(tp90), "深度 · P90 轮次/会话"),
     ]
@@ -782,7 +787,8 @@ def render_profile_report(profile: dict, meta: dict,
         f'<div class="lg-grid">{legend_html}</div>'
         f'{crit_html}'
         '<div class="fine-note">四档由 LLM 对每条真人输入逐条语义分档、规则层聚合组装；'
-        'AskUserQuestion 选项回答按协议硬信号计入 L2。</div>'
+        'AskUserQuestion 选项回答按协议硬信号计入 L2。'
+        'L4 健康带约 5-20%，过高表示过度对抗、过低引导力不足；档位由绝对用量硬指标判定，与姿态分布解耦。</div>'
         '</div>'
     )
 
@@ -818,7 +824,9 @@ def render_profile_report(profile: dict, meta: dict,
     if _headline(outcome):
         outcome_desc = f"{_headline(outcome)} · {outcome_desc}"
     dim_rows = [
-        ("姿势", f"{l4:.0%}", "L4 主导", f"以引导和主导为主，L3+L4 合计 {axis_posture:.0%}"),
+        ("姿势", escape(posture_diag["state"]) if posture_diag else "—", "姿态",
+         (escape(posture_diag["reason"]) if posture_diag
+          else f"L3+L4 合计 {axis_posture:.0%}")),
         ("水平", num(tb), "种工具", _headline(breadth)),
         ("深度", num(tp90), "P90 轮/会话", _headline(depth)),
         ("成果", pct0(landed_ratio), "落地率", outcome_desc),

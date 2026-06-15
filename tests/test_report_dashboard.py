@@ -408,8 +408,8 @@ def test_trend_zero_sessions_no_crash():
 def test_stage_card_criteria_table():
     # 绝对值闸门口径：active_days=20/输入=588/广度=28/深度信号(subagent)=12 满足精通(第3档)；
     # 有效输入<800 等未达引领，停在第3档，判据卡出「已达标 ✓」列 + 「距下一档」缺口列。
-    # 注：新值键(active_days/human_input_count 等)的实际值渲染待 Task 4，当前以「—」占位，
-    # 故只对仍可渲染的 tool_breadth 断言 ✓ 实际值。
+    # Task 4 后：新值键(active_days/human_input_count/git_landed_count 等)的实际值也渲染，
+    # 缺口判据带实际值 + ✗（如 git 落地缺省 0 次 → 「0 次 ✗」）。
     metrics = dict(_metrics())
     metrics["landed_ratio"] = 0.3
     html = render_profile_report(_profile(), _meta(), metrics, None)
@@ -419,6 +419,8 @@ def test_stage_card_criteria_table():
     assert 'class="crit-ok"' in html and "✓" in html
     assert "距下一档" in html    # 距下一档缺口列存在（gaps 非空）
     assert "git 落地 ≥ 5 次" in html   # 距引领期缺口判据之一
+    # 缺口判据现按绝对量渲染实际值 + ✗：git_landed_count 缺省 0 → 「0 次 ✗」
+    assert 'class="crit-miss">0 次 ✗</span>' in html
 
 
 def test_token_appendix_open_evidence_collapsed():
