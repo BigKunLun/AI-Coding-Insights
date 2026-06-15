@@ -29,6 +29,7 @@ allowed-tools: Bash(uv run *), Bash(date *), Agent, Read, Write
 - **L3 引导**：主动给目标/约束/格式/范围，贴报错或日志追问，递进式追问。只给目标不给约束的普通指令（「帮我修 X」）算 L3 下沿。
 - **L4 主导**：技术具体性纠错、推翻方案并给更优约束、给 AI 没想到的边界、要求自验或给验收判据、先要方案评审再放行、编排多 subagent 或自建扩展。
 - 判档**看语义不看长度**（「改成异步」是 L4；「好的就这么办」是 L1）。**防伪主导**：未验证就放行、放任膨胀、容忍未请求的连带改动——措辞再强也不算 L4。**拿不准就低不就高**（L4 拿不准记 L3，L3 拿不准记 L1）。
+- **健康带原则**：L4 主导健康区间约 5-20%，过高（>20%）多为无脑推翻或 AI 不给力，过低则引导力不足；L3 引导是掌握者的主力档。姿态健康与成熟度档位**解耦**——档位看绝对用量硬指标，姿态看分布是否落在健康带。
 
 ### 专家共同纪律（派每个专家时整段嵌入其 prompt）
 1. 产出只通过返回值回传，**不写任何文件**。
@@ -102,7 +103,7 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights verify-obs --batches
 - **水平专家** · 输入：`aggregate` 的 `tool_breadth`/`tool_session_counts`/`subagent_sessions`/`workflow_sessions`/`mcp_sessions`/`model_counts`，及高阶编排信号 `background_task_count`/`background_sessions`（后台委托）与 `max_parallel_agents`/`parallel_agent_turns`（真并行：单轮并发派出的 Agent 峰值与轮次）。产出：`{"breadth":{"headline":"一句话定调","points":["2-4 条，行为+量级"],"metrics":[{"label":"工具广度","value":<n>},{"label":"SubAgent会话","value":<n>}],"tools":["工具能力短语…"]}}`。`points` 每条 ＝ **一句洞察**（这说明你怎样用 AI：解读 / 对比 / 点张力），按「洞察导语 —— 次级展开 / 枚举」用全角破折号 `——` 分两段；**禁止复述指标卡已有数字**（如「工具广度 43 种」单列数字无解读不算洞察），导语承载结论、展开放佐证枚举。禁忌：据信号点出后台委托与真并行水平（共同纪律 7：0 是真值）。
 - **深度专家** · 输入：`notable_turns` 行为 ＋ `aggregate.anchor_counts` ＋ `thinking_block_count`/`thinking_sessions`（深度推理强度硬锚）。产出：`{"depth":{"headline":"..","points":["..带 SO-WHAT.."],"metrics":[{"label":"override","value":<n>},{"label":"轮次/会话","value":".."}]}, "evidence":[{"pointer","behavior"}…]}`。禁忌：metrics 直接取硬指标（override＝`anchor_counts.override`，轮次/会话＝`avg_turns`，不从 notable_turns 自数）；每条 point 挖到「意味什么/该怎么调」，不止「做了什么」，同样按「洞察导语 —— 展开」用全角破折号 `——` 分两段。
 - **成果专家** · 输入：`aggregate` 的 `git_landed_count`（主锚：git 历史硬证据，本人提交且落入会话时间窗）/`git_outside_count`（窗内本人提交但在会话窗外，仅参考）/`commit_count`（会话内可观测提交）/`dropped_count`（观测到但已不在分支历史）/`edit_count`/`landed_ratio`。产出：`{"outcome":{"headline":"..","points":[".."],"metrics":[{"label":"落地提交","value":<git_landed_count>},{"label":"观测丢弃","value":<dropped_count>}],"landed":<git_landed_count>,"total":<git_landed_count + dropped_count>}}`。`points` 每条 ＝ **一句洞察**（量级背后说明什么、落地节奏的张力在哪），按「洞察导语 —— 次级展开 / 枚举」用全角破折号 `——` 分两段，**禁止复述指标卡已有数字**单列无解读。禁忌：只讲量级与落地节奏；`commit_count`=0 而 `git_landed_count`>0 是**测不到不是没提交**（共同纪律 3），绝不写「无提交收口/落地为零」。
-- **教练 / 诊断专家** · 输入：全部 `notable_turns`（重点 kind="friction"）＋ `aggregate`（含 `friction_stats`：error/override 命中会话数与单会话 top3、轮次最长 top3，为「集中于少数会话」提供确定性分布）。产出：`{"frictions":[{"observation":"..","pointers":["/abs/path.jsonl#uuid"],"suggestion":".."}…1-5 条]}`。禁忌：每条观察写出依据数字（取自 `aggregate`/`friction_stats`/会话 `signals`）；`pointers` 1-3 个从 friction 的 notable_turns 原样拷贝（会话级用 file_path）；建议具体到「什么场景+做什么动作+怎么验证」，禁「建议小步提交」这类对谁都成立的话；**「怎么验证」只引报告已呈现的硬指标**（`error_top_counts`/`override_top_counts`/趋势表密度），不引报告未渲染的内部计数门槛（如「compaction 从 5 条降到 2 条」——报告无此数，用户无法自验）；**至少一条直接服务姿势升档**（L3 引导→L4 主导），与 03 档位判据缺口呼应；工具覆盖盲区不归你管（规则层已渲染）。下面只是常见方向**示例**（宁缺勿滥，优先本窗口最突出、最个性化的模式）：反复返工（`edit_count` 相对 `git_landed_count` 偏高）、error 集中（`friction_stats.error_top_counts` 对照 `error_session_count`/`session_count`）、override 集中于少数会话（`friction_stats.override_top_counts`）、单会话轮次远超 `avg_turns` 且无 commit 收口（仅当 `commit_count`>0 可用）。
+- **教练 / 诊断专家** · 输入：全部 `notable_turns`（重点 kind="friction"）＋ `aggregate`（含 `friction_stats`：error/override 命中会话数与单会话 top3、轮次最长 top3，为「集中于少数会话」提供确定性分布）。产出：`{"frictions":[{"observation":"..","pointers":["/abs/path.jsonl#uuid"],"suggestion":".."}…1-5 条]}`。禁忌：每条观察写出依据数字（取自 `aggregate`/`friction_stats`/会话 `signals`）；`pointers` 1-3 个从 friction 的 notable_turns 原样拷贝（会话级用 file_path）；建议具体到「什么场景+做什么动作+怎么验证」，禁「建议小步提交」这类对谁都成立的话；**「怎么验证」只引报告已呈现的硬指标**（`error_top_counts`/`override_top_counts`/趋势表密度），不引报告未渲染的内部计数门槛（如「compaction 从 5 条降到 2 条」——报告无此数，用户无法自验）；**至少一条直接服务姿态健康**：偏依赖→如何把引导力（主动给目标/约束/验收判据）提上来；偏对抗（L4>20%）→如何减少无脑推翻、把约束前置到提问环节；健康→如何在保持的同时补足绝对用量向上一成熟度档冲。**不再以「L4 越高越好」为导向。**；工具覆盖盲区不归你管（规则层已渲染）。下面只是常见方向**示例**（宁缺勿滥，优先本窗口最突出、最个性化的模式）：反复返工（`edit_count` 相对 `git_landed_count` 偏高）、error 集中（`friction_stats.error_top_counts` 对照 `error_session_count`/`session_count`）、override 集中于少数会话（`friction_stats.override_top_counts`）、单会话轮次远超 `avg_turns` 且无 commit 收口（仅当 `commit_count`>0 可用）。
 
 ## 4. 阶段三 · 合成 + 渲染
 
@@ -123,7 +124,7 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights verify-obs --batches
 1. **脱敏**：重读你写的【脱敏字段集】每个字段，逐条确认无【业务词黑名单】词，有则改写成纯行为级。
 2. **口径一致**：同一指标在不同区块/口径必须一致（趋势表按每会话密度归一，正文就不能用未归一的绝对计数推「放大」结论）。
 3. **能力自洽**：水平维度若判某能力「未激活/为零」（如真并行），别处叙述不得说成已具备。
-4. **档位呼应**：若点出「档位缺口」，摩擦建议须有一条服务升档。
+4. **姿态呼应**：若点出姿态偏离健康带（偏依赖 / 偏对抗），摩擦建议须有一条直接服务姿态健康；不以「L4 越高越好」为导向。
 5. **双峰点破**：均值低但存在超长尾时（如单会话均值极低却有超长会话），点破是双峰分布，别让「整体简洁」与「长会话撑爆」并列而互不解释。
 
 然后用 **Bash 工具**跑下面这条**单条**命令（`<N>` ＝ 清单 `aggregate.session_count`，并为清单 `included_projects` 里**每个**项目追加一个 `--project <路径>`）：
@@ -141,7 +142,7 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights render-profile --plu
 
 把渲染命令 stdout 输出的报告路径告知用户，口头小结（**同守脱敏铁律**）：
 - **取数窗口**（起止 + 天数）+ **取数范围**（`window.mode`＝`all` 明示「个人模式：全部本机会话」，`include` 明示「团队模式」）。
-- **四维画像**：姿势分布（四档数字以渲染命令 stdout 的「姿势分布: …」行为准，规则层组装，不自估）+ 水平/深度/成果 + landed/total。
+- **四维画像**：先报**姿态健康态**（健康 / 偏依赖 / 偏对抗 / 放手为主 / 样本不足，取自渲染输出，**不要把 L4 占比高当成褒奖**）与**成熟度档位**（探索期/进阶期/精通期/引领期，看绝对用量硬指标）；四档原始数字仍以渲染命令 stdout 的「姿势分布: …」行为准（规则层组装，不自估）+ 水平/深度/成果 + landed/total。
 - **摩擦建议 1-2 个要点** + 「较上次进步」（若有同比）+ **本次编排规模**（如「N 个 extractor + 5 个专家」；subagent 的 token 用量拿不到，不报数、不编造）。
 
 追加提醒（命中才加）：
