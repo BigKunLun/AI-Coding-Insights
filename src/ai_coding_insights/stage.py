@@ -2,42 +2,20 @@
 
 定位约束：这是给本人看的成长定位，不是考核分数。判定规则随结果一起返回
 （criteria/gaps），渲染层必须原样展示，让人知道「为什么在这、怎么往上」。
-posture 分布由阶段一 extractor 逐 turn 语义分档计数、规则层聚合组装
-（见 assemble_posture；AskUserQuestion 答题为协议硬信号计入 L2），
-tool_breadth/landed_ratio 来自硬指标——本判定含
-LLM 软信号成分，仍属软信号初筛，不得用于奖惩。
-landed_ratio 自 2026-06-12 起为 git 主锚口径：git 落地/（落地+观测丢弃），
-见 models.AggregateMetrics.landed_ratio；transcript 不可观测环境不再恒 0。
 
-阈值依据（v2 口径，2026-06-12 重校初设）：v1 口径把全部非短非选项输入默认为
-L3+L4，35/55/70% 是按该虚高分布定的。v2 逐 turn 语义分档后，放行/选择被
-LLM 归位到 L1/L2，L3+L4 为真实语义占比——按业界锚点（Anthropic Economic/
-Fluency Index：真实人群低主导交互约 80%，高主导行为人群占比 8-16%）将各档
-阈值约折半初设（引领期仍取「窄口筛头部」）。这是无本机分布数据时的折算值，
-待攒 2-3 个月度 v2 真实分布后按本机人群分位重定（快照已带 posture_rubric=2
-口径标记，跨口径不可同比）。
+成熟度轴（decide_stage）改为绝对值闸门：从 aggregate 取活跃天数、有效输入条数、
+工具广度等硬指标的绝对量，逐档过门——根治旧口径下低用量者凭 posture 比例
+虚高被抬档的问题（比例只反映「这点用量里怎么用」，不反映「用了多少」）。
+深度信号（思考/子代理/Plan 任一）与高阶编排（真并行/后台/自建扩展）为合成信号。
+git 落地次数为 git 主锚硬证据（见 git_outcome.py），仅作引领期闸门。
+仍属软信号初筛，不得直接用于奖惩；阈值初设值待人群分位校准，整体可覆盖。
+
+posture 分布仍由阶段一 extractor 逐 turn 语义分档计数、规则层聚合组装
+（见 assemble_posture；AskUserQuestion 答题为协议硬信号计入 L2），
+供后续姿势诊断轴消费，不再参与成熟度定级。
 """
 
-# 阶段从高到低逐档匹配；每档: (序号, 名称, 条件列表[(描述, 值键, 谓词)])
-# 谓词输入: l4, l34(=L3+L4), tb(tool_breadth), lr(landed_ratio)
-# 值键对应返回值 values 字典的键——渲染层据此取「实际值」，判据文案随便改不会断渲染
-_STAGES = [
-    (4, "引领期", [
-        ("L4 主导占比 ≥ 15%",  "L4",           lambda l4, l34, tb, lr: l4 >= 0.15),
-        ("L3+L4 合计 ≥ 50%",   "L3+L4",        lambda l4, l34, tb, lr: l34 >= 0.50),
-        ("工具广度 ≥ 15 种",    "tool_breadth", lambda l4, l34, tb, lr: tb >= 15),
-        ("提交落地率 ≥ 50%（git 口径）", "landed_ratio", lambda l4, l34, tb, lr: lr >= 0.50),
-    ]),
-    (3, "精通期", [
-        ("L3+L4 合计 ≥ 35%",   "L3+L4",        lambda l4, l34, tb, lr: l34 >= 0.35),
-        ("工具广度 ≥ 10 种",    "tool_breadth", lambda l4, l34, tb, lr: tb >= 10),
-    ]),
-    (2, "进阶期", [
-        ("L3+L4 合计 ≥ 15%（开始主动引导）", "L3+L4", lambda l4, l34, tb, lr: l34 >= 0.15),
-        ("工具广度 ≥ 6 种",     "tool_breadth", lambda l4, l34, tb, lr: tb >= 6),
-    ]),
-    (1, "探索期", []),               # 兜底
-]
+from dataclasses import dataclass
 
 
 def normalize_posture(posture_distribution: dict) -> dict:
@@ -81,35 +59,102 @@ def assemble_posture(llm_posture_counts: dict, option_pick_count) -> dict:
     return {"L1": l1 / dp, "L2": (l2 + picks) / dp, "L3": l3 / dp, "L4": l4 / dp}
 
 
-def decide_stage(posture_distribution: dict, tool_breadth: int, landed_ratio: float) -> dict:
-    """返回 dict，键含：
-    - stage: 1-4
-    - name: 阶段名
-    - criteria: 本档判定依据，每项 {"desc": 文案, "key": values 的值键}（兜底档 key 为 None）
-    - gaps: 距上一档未满足项（结构同 criteria）
-    - values: 归一化后的实际值 {"L4", "L3+L4", "tool_breadth", "landed_ratio"}，
-      渲染层按判据的 key 在此取「你的实际值」，不做文案匹配。
-    """
-    pd = normalize_posture(posture_distribution)
-    # 统一 round 抑制浮点误差（如 0.08+0.47=0.5499999… → 0.55），避免恰好达标者被降档。
-    l4 = round(pd["L4"], 6)
-    l34 = round(pd["L4"] + pd["L3"], 6)
-    tb = int(tool_breadth or 0)
-    lr = round(float(landed_ratio or 0), 6)
-    args = (l4, l34, tb, lr)
+@dataclass(frozen=True)
+class StageThresholds:
+    """成熟度档位绝对闸门（初设值待人群分位校准，可整体替换覆盖）。"""
+    s2_active_days: int = 5
+    s2_human_input: int = 80
+    s2_tool_breadth: int = 6
+    s3_active_days: int = 12
+    s3_human_input: int = 300
+    s3_tool_breadth: int = 10
+    s3_depth_signal: int = 1
+    s4_active_days: int = 20
+    s4_human_input: int = 800
+    s4_advanced: int = 1
+    s4_git_landed: int = 5
 
-    matched_idx = len(_STAGES) - 1
-    for i, (_num, _name, conds) in enumerate(_STAGES):
-        if all(pred(*args) for _, _, pred in conds):
-            matched_idx = i
+
+DEFAULT_STAGE_THRESHOLDS = StageThresholds()
+
+
+def _stage_values(m: dict) -> dict:
+    """从 aggregate 提取定级用绝对值（含两个合成信号）。非数值按 0。"""
+    def g(k):
+        try:
+            return int(m.get(k, 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+    depth_signal = max(g("thinking_sessions"), g("subagent_sessions"),
+                       g("plan_mode_sessions"))
+    advanced = sum(1 for ok in (
+        g("max_parallel_agents") >= 2,
+        g("background_sessions") >= 2,
+        g("custom_skill_count") >= 1,
+    ) if ok)
+    return {
+        "active_days": g("active_days"),
+        "human_input_count": g("human_input_count"),
+        "tool_breadth": g("tool_breadth"),
+        "depth_signal": depth_signal,
+        "advanced_orchestration": advanced,
+        "git_landed_count": g("git_landed_count"),
+    }
+
+
+def _stages(t: StageThresholds):
+    """从高到低；每档 (序号, 名称, [(判据文案, 值键, 谓词)])。谓词输入 = _stage_values 的 dict。"""
+    return [
+        (4, "引领期", [
+            (f"活跃天数 ≥ {t.s4_active_days} 天", "active_days",
+             lambda v: v["active_days"] >= t.s4_active_days),
+            (f"有效输入 ≥ {t.s4_human_input} 条", "human_input_count",
+             lambda v: v["human_input_count"] >= t.s4_human_input),
+            (f"高阶编排信号 ≥ {t.s4_advanced} 项（真并行/后台/自建扩展）",
+             "advanced_orchestration",
+             lambda v: v["advanced_orchestration"] >= t.s4_advanced),
+            (f"git 落地 ≥ {t.s4_git_landed} 次", "git_landed_count",
+             lambda v: v["git_landed_count"] >= t.s4_git_landed),
+        ]),
+        (3, "精通期", [
+            (f"活跃天数 ≥ {t.s3_active_days} 天", "active_days",
+             lambda v: v["active_days"] >= t.s3_active_days),
+            (f"有效输入 ≥ {t.s3_human_input} 条", "human_input_count",
+             lambda v: v["human_input_count"] >= t.s3_human_input),
+            (f"工具广度 ≥ {t.s3_tool_breadth} 种", "tool_breadth",
+             lambda v: v["tool_breadth"] >= t.s3_tool_breadth),
+            (f"深度信号 ≥ {t.s3_depth_signal}（思考/子代理/Plan 任一）", "depth_signal",
+             lambda v: v["depth_signal"] >= t.s3_depth_signal),
+        ]),
+        (2, "进阶期", [
+            (f"活跃天数 ≥ {t.s2_active_days} 天", "active_days",
+             lambda v: v["active_days"] >= t.s2_active_days),
+            (f"有效输入 ≥ {t.s2_human_input} 条", "human_input_count",
+             lambda v: v["human_input_count"] >= t.s2_human_input),
+            (f"工具广度 ≥ {t.s2_tool_breadth} 种", "tool_breadth",
+             lambda v: v["tool_breadth"] >= t.s2_tool_breadth),
+        ]),
+        (1, "探索期", []),
+    ]
+
+
+def decide_stage(metrics: dict,
+                 thresholds: StageThresholds = DEFAULT_STAGE_THRESHOLDS) -> dict:
+    """绝对值闸门式成熟度定级。返回 stage/name/criteria/gaps/values；
+    values 为 _stage_values 的实际值（渲染层按 key 取值，不做文案匹配）。"""
+    v = _stage_values(metrics or {})
+    stages = _stages(thresholds)
+    matched = len(stages) - 1
+    for i, (_n, _nm, conds) in enumerate(stages):
+        if all(pred(v) for _, _, pred in conds):
+            matched = i
             break
-    num, name, conds = _STAGES[matched_idx]
+    num, name, conds = stages[matched]
     gaps = []
-    if matched_idx > 0:                       # 有上一档可冲
-        next_conds = _STAGES[matched_idx - 1][2]
-        gaps = [{"desc": desc, "key": key}
-                for desc, key, pred in next_conds if not pred(*args)]
-    criteria = ([{"desc": desc, "key": key} for desc, key, _ in conds]
+    if matched > 0:
+        gaps = [{"desc": d, "key": k}
+                for d, k, pr in stages[matched - 1][2] if not pr(v)]
+    criteria = ([{"desc": d, "key": k} for d, k, _ in conds]
                 or [{"desc": "未达进阶期条件（兜底档）", "key": None}])
-    return {"stage": num, "name": name, "criteria": criteria, "gaps": gaps,
-            "values": {"L4": l4, "L3+L4": l34, "tool_breadth": tb, "landed_ratio": lr}}
+    return {"stage": num, "name": name, "criteria": criteria,
+            "gaps": gaps, "values": v}

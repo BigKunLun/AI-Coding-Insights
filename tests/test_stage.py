@@ -1,66 +1,66 @@
-from ai_coding_insights.stage import assemble_posture, decide_stage
+from ai_coding_insights.stage import (
+    assemble_posture, decide_stage, StageThresholds,
+)
 
 
-def _pd(l1=0.0, l2=0.0, l3=0.0, l4=0.0):
-    return {"L1": l1, "L2": l2, "L3": l3, "L4": l4}
+def _m(**kw):
+    """构造 aggregate 风格 metrics dict，缺省全 0。"""
+    base = dict(active_days=0, human_input_count=0, tool_breadth=0,
+                thinking_sessions=0, subagent_sessions=0, plan_mode_sessions=0,
+                max_parallel_agents=0, background_sessions=0, custom_skill_count=0,
+                git_landed_count=0)
+    base.update(kw)
+    return base
+
+
+def test_low_usage_caps_at_explorer_despite_ratio():
+    r = decide_stage(_m(active_days=2, human_input_count=20, tool_breadth=12))
+    assert r["stage"] == 1 and r["name"] == "探索期"
+
+
+def test_advancing_stage():
+    r = decide_stage(_m(active_days=6, human_input_count=120, tool_breadth=7))
+    assert r["stage"] == 2 and r["name"] == "进阶期"
+    assert r["criteria"] and all(c["key"] in r["values"] for c in r["criteria"])
+
+
+def test_master_stage_needs_depth_signal():
+    miss = decide_stage(_m(active_days=14, human_input_count=400, tool_breadth=11))
+    assert miss["name"] == "进阶期"
+    assert any(g["key"] == "depth_signal" for g in miss["gaps"])
+    ok = decide_stage(_m(active_days=14, human_input_count=400, tool_breadth=11,
+                         thinking_sessions=1))
+    assert ok["name"] == "精通期"
 
 
 def test_leader_stage():
-    r = decide_stage(_pd(l3=0.40, l4=0.45), tool_breadth=28, landed_ratio=0.69)
+    r = decide_stage(_m(active_days=22, human_input_count=900, tool_breadth=16,
+                        thinking_sessions=3, max_parallel_agents=2, git_landed_count=8))
     assert r["stage"] == 4 and r["name"] == "引领期"
-    assert r["gaps"] == []          # 已是最高阶段
-    assert r["criteria"]            # 判定依据非空，报告要印
-    # 结构化判据：渲染层按 key 取实际值，key 必须落在 values 里
-    assert all(c["key"] in r["values"] for c in r["criteria"])
+    assert r["gaps"] == []
 
 
-def test_master_stage_missing_landed():
-    # L4/L3+L4/工具都够引领，但落地率不够 → 精通期，gaps 指出落地率差距
-    r = decide_stage(_pd(l3=0.30, l4=0.40), tool_breadth=20, landed_ratio=0.3)
+def test_leader_blocked_by_landed():
+    r = decide_stage(_m(active_days=22, human_input_count=900, tool_breadth=16,
+                        thinking_sessions=3, max_parallel_agents=2, git_landed_count=1))
     assert r["name"] == "精通期"
-    assert any("落地率" in g["desc"] for g in r["gaps"])
-    assert any(g["key"] == "landed_ratio" for g in r["gaps"])
+    assert any(g["key"] == "git_landed_count" for g in r["gaps"])
 
 
-def test_competent_stage():
-    r = decide_stage(_pd(l3=0.30, l4=0.10), tool_breadth=8, landed_ratio=0.2)
+def test_boundary_inclusive():
+    r = decide_stage(_m(active_days=5, human_input_count=80, tool_breadth=6))
     assert r["name"] == "进阶期"
 
 
-def test_explorer_stage():
-    r = decide_stage(_pd(l1=0.6, l2=0.3, l3=0.1), tool_breadth=3, landed_ratio=0.0)
+def test_thresholds_overridable():
+    strict = StageThresholds(s2_active_days=10)
+    r = decide_stage(_m(active_days=6, human_input_count=120, tool_breadth=7),
+                     thresholds=strict)
     assert r["name"] == "探索期"
-    assert any("L3" in g["desc"] or "引导" in g["desc"] for g in r["gaps"])
 
 
-def test_boundary_exact_thresholds_inclusive():
-    # 阈值取等号应落在高阶段（>= 语义）
-    r = decide_stage(_pd(l3=0.35, l4=0.35), tool_breadth=15, landed_ratio=0.5)
-    assert r["name"] == "引领期"
-
-
-def test_percent_form_normalized():
-    # 百分数形态（和≈100）应归一化；lr=0.3 不够引领 → 精通期
-    r = decide_stage({"L1": 10, "L2": 30, "L3": 40, "L4": 20}, 28, 0.3)
-    assert r["name"] != "引领期"
-    assert r["name"] == "精通期"
-
-
-def test_float_boundary_sum_inclusive():
-    # L3+L4 浮点和恰 0.35（精通阈值），round 后应达标
-    r = decide_stage({"L3": 0.08, "L4": 0.27}, 12, 0.2)
-    assert r["name"] == "精通期"
-
-
-def test_v2_thresholds_plain_directive_user_lands_competent():
-    # v2 口径典型画像：放行/选择为主 + 两成引导 → 进阶期（旧阈值下会掉探索期）
-    r = decide_stage(_pd(l1=0.45, l2=0.30, l3=0.20, l4=0.05), tool_breadth=8,
-                     landed_ratio=0.4)
-    assert r["name"] == "进阶期"
-
-
-def test_defensive_none_inputs():
-    r = decide_stage(None, None, None)
+def test_decide_stage_defensive_none():
+    r = decide_stage(None)
     assert r["name"] == "探索期"
 
 
