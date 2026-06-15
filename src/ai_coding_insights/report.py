@@ -753,8 +753,7 @@ def render_profile_report(profile: dict, meta: dict,
         for code, name, desc in _LEGEND_ITEMS
     )
     # 阶段判定只算一次：横幅大字 / 判据卡共用同一结果
-    stage = (None if metrics is None
-             else decide_stage(pd, m.get("tool_breadth", 0), m.get("landed_ratio", 0.0)))
+    stage = None if metrics is None else decide_stage(m)
     # 大堆叠条：段内嵌百分比；宽度公式照搬旧 segs（pct(t)/total_pd*100），只是放大+内嵌文字。
     # 段内文字色按档位身份定（非 DOM 位置）：L1-L3 浅/中底用深字，仅 L4 深底用白字
     _BSEG_INK = {"L1": "#0e3a4a", "L2": "#0e3a4a", "L3": "#0e3a4a", "L4": "#ffffff"}

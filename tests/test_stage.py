@@ -64,6 +64,38 @@ def test_decide_stage_defensive_none():
     assert r["name"] == "探索期"
 
 
+def test_advanced_orchestration_background_only_counts_one():
+    # 仅后台会话达标 → 高阶编排信号计 1（够引领期的 s4_advanced=1 闸门那项）
+    r = decide_stage(_m(active_days=22, human_input_count=900, tool_breadth=16,
+                        thinking_sessions=3, background_sessions=2, git_landed_count=8))
+    assert r["values"]["advanced_orchestration"] == 1
+    assert r["name"] == "引领期"
+
+
+def test_advanced_orchestration_parallel_boundary_inclusive():
+    # max_parallel_agents=1 不计入；=2（默认 s4_parallel_min）计入，边界含等号
+    below = decide_stage(_m(max_parallel_agents=1))
+    assert below["values"]["advanced_orchestration"] == 0
+    at = decide_stage(_m(max_parallel_agents=2))
+    assert at["values"]["advanced_orchestration"] == 1
+
+
+def test_synthetic_signal_thresholds_overridable():
+    # 把后台门抬到 3：background_sessions=2 不再计入
+    t = StageThresholds(s4_background_min=3)
+    r = decide_stage(_m(background_sessions=2), thresholds=t)
+    assert r["values"]["advanced_orchestration"] == 0
+
+
+def test_decide_stage_defensive_per_key_coercion():
+    # 杂值逐键强制：字符串数字按数值、浮点 round、None 按 0，均不抛错
+    r = decide_stage(_m(active_days=6, human_input_count="120", tool_breadth=7.0,
+                        thinking_sessions=None))
+    assert r["values"]["human_input_count"] == 120
+    assert r["values"]["tool_breadth"] == 7
+    assert r["name"] == "进阶期"
+
+
 def test_assemble_posture_from_counts():
     # LLM 计数 95 条 + 5 个 AskUserQuestion 答题 → 分母 100，picks 并入 L2
     pd = assemble_posture({"L1": 50, "L2": 10, "L3": 25, "L4": 10}, option_pick_count=5)

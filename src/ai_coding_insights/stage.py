@@ -73,24 +73,28 @@ class StageThresholds:
     s4_human_input: int = 800
     s4_advanced: int = 1
     s4_git_landed: int = 5
+    s4_parallel_min: int = 2
+    s4_background_min: int = 2
+    s4_custom_min: int = 1
 
 
 DEFAULT_STAGE_THRESHOLDS = StageThresholds()
 
 
-def _stage_values(m: dict) -> dict:
-    """从 aggregate 提取定级用绝对值（含两个合成信号）。非数值按 0。"""
+def _stage_values(m: dict, t: StageThresholds) -> dict:
+    """从 aggregate 提取定级用绝对值（含两个合成信号）。非数值按 0；
+    意外浮点先 round 取整（不向零截断，避免 10.9 漏掉 ≥11 闸门）。"""
     def g(k):
         try:
-            return int(m.get(k, 0) or 0)
+            return int(round(float(m.get(k, 0) or 0)))
         except (TypeError, ValueError):
             return 0
     depth_signal = max(g("thinking_sessions"), g("subagent_sessions"),
                        g("plan_mode_sessions"))
     advanced = sum(1 for ok in (
-        g("max_parallel_agents") >= 2,
-        g("background_sessions") >= 2,
-        g("custom_skill_count") >= 1,
+        g("max_parallel_agents") >= t.s4_parallel_min,
+        g("background_sessions") >= t.s4_background_min,
+        g("custom_skill_count") >= t.s4_custom_min,
     ) if ok)
     return {
         "active_days": g("active_days"),
@@ -142,7 +146,7 @@ def decide_stage(metrics: dict,
                  thresholds: StageThresholds = DEFAULT_STAGE_THRESHOLDS) -> dict:
     """绝对值闸门式成熟度定级。返回 stage/name/criteria/gaps/values；
     values 为 _stage_values 的实际值（渲染层按 key 取值，不做文案匹配）。"""
-    v = _stage_values(metrics or {})
+    v = _stage_values(metrics or {}, thresholds)
     stages = _stages(thresholds)
     matched = len(stages) - 1
     for i, (_n, _nm, conds) in enumerate(stages):

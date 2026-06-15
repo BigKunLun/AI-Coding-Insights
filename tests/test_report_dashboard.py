@@ -406,18 +406,19 @@ def test_trend_zero_sessions_no_crash():
 
 
 def test_stage_card_criteria_table():
-    # 判据对照行：左判据文案，右「实际值 ✓/✗」。v2 阈值下 L3+L4=75%、广度 28 满足精通；
-    # 压低落地率使其停在第3档，距第4档缺 落地率≥50% 列为 ✗
+    # 绝对值闸门口径：active_days=20/输入=588/广度=28/深度信号(subagent)=12 满足精通(第3档)；
+    # 有效输入<800 等未达引领，停在第3档，判据卡出「已达标 ✓」列 + 「距下一档」缺口列。
+    # 注：新值键(active_days/human_input_count 等)的实际值渲染待 Task 4，当前以「—」占位，
+    # 故只对仍可渲染的 tool_breadth 断言 ✓ 实际值。
     metrics = dict(_metrics())
     metrics["landed_ratio"] = 0.3
     html = render_profile_report(_profile(), _meta(), metrics, None)
     assert "已达标" in html      # 全宽卡判据横栏：已达标列
-    assert "75%" in html        # L3+L4 实际
-    assert "28 种" in html      # 工具广度实际
+    assert "工具广度 ≥ 10 种" in html   # 精通档判据文案（新绝对值口径）
+    assert "28 种" in html      # 工具广度实际值
     assert 'class="crit-ok"' in html and "✓" in html
-    assert "距下一档" in html    # 距下一档缺口列
-    assert 'class="crit-miss"' in html and "✗" in html
-    assert "18%" in html        # 未达标判据也给实际值
+    assert "距下一档" in html    # 距下一档缺口列存在（gaps 非空）
+    assert "git 落地 ≥ 5 次" in html   # 距引领期缺口判据之一
 
 
 def test_token_appendix_open_evidence_collapsed():
