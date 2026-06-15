@@ -150,6 +150,20 @@ def test_posture_handsoff_with_depth_evidence():
     assert r["state"] == "放手为主"
 
 
+def test_posture_handsoff_with_thinking_evidence():
+    r = diagnose_posture({"L1": 0.5, "L2": 0.35, "L3": 0.1, "L4": 0.05},
+                         decision_point_count=100, thinking_sessions=2)
+    assert r["state"] == "放手为主"
+
+
+def test_posture_healthy_conservative_fallback():
+    # L3+L4=0.30 达引导下限，L4=0.10 在健康带，但 L3=0.20<0.25 → 走保守兜底，仍判健康
+    r = diagnose_posture({"L1": 0.4, "L2": 0.3, "L3": 0.2, "L4": 0.1},
+                         decision_point_count=100)
+    assert r["state"] == "健康"
+    assert "偏保守" not in r["reason"]   # 不再甩锅 L4
+
+
 def test_posture_l4_ceiling_boundary_inclusive():
     r = diagnose_posture({"L1": 0.2, "L2": 0.25, "L3": 0.35, "L4": 0.2},
                          decision_point_count=100)

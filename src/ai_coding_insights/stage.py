@@ -211,5 +211,5 @@ def diagnose_posture(posture_distribution: dict, decision_point_count: int,
         return {"state": "健康",
                 "reason": f"L3 主力 {l3:.0%}、L4 在健康带 {l4:.0%}", "values": vals}
     return {"state": "健康",
-            "reason": f"引导力达 {l34:.0%}，L4 {l4:.0%} 偏保守但在健康范围",
+            "reason": f"引导力达 {l34:.0%}，分布在健康范围内（L3 {l3:.0%}/L4 {l4:.0%}）",
             "values": vals}
