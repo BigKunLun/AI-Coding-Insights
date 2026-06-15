@@ -137,3 +137,22 @@ def test_report_shows_posture_health_state():
                                  metrics=metrics)
     assert "姿态健康" in html and "健康" in html
     assert "姿势 · L4 主导" not in html
+
+
+def test_report_posture_reason_not_double_escaped():
+    from ai_coding_insights.report import render_profile_report
+    profile = {
+        "posture_distribution": {"L1": 0.5, "L2": 0.35, "L3": 0.1, "L4": 0.05},
+        "breadth": {"headline": "x"}, "depth": {"headline": "y"},
+        "outcome": {"headline": "z", "landed": 1, "total": 4},
+        "frictions": [], "evidence": [{"behavior": "b", "pointer": "/p.jsonl#u"}],
+    }
+    metrics = {"tool_breadth": 8, "turn_p90": 10, "active_days": 6,
+               "human_input_count": 120, "decision_point_count": 100,
+               "plan_mode_sessions": 0, "thinking_sessions": 0,
+               "landed_ratio": 0.25, "git_landed_count": 1}
+    html = render_profile_report(profile, {"included_projects": [], "session_count": 10,
+                                           "generated_at": "2026-06-15T00:00:00Z"},
+                                 metrics=metrics)
+    assert "偏依赖" in html
+    assert "&amp;lt;" not in html   # reason 里的 < 只能单次转义为 &lt;

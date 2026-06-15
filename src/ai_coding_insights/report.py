@@ -666,7 +666,6 @@ def render_profile_report(profile: dict, meta: dict,
     def pct0(v):
         return "—" if v is None else f"{float(v):.0%}"
 
-    l4 = pct("L4")
     posture_diag = (None if metrics is None else diagnose_posture(
         pd, m.get("decision_point_count", 0),
         m.get("plan_mode_sessions", 0), m.get("thinking_sessions", 0)))
@@ -825,7 +824,7 @@ def render_profile_report(profile: dict, meta: dict,
         outcome_desc = f"{_headline(outcome)} · {outcome_desc}"
     dim_rows = [
         ("姿势", escape(posture_diag["state"]) if posture_diag else "—", "姿态",
-         (escape(posture_diag["reason"]) if posture_diag
+         (posture_diag["reason"] if posture_diag
           else f"L3+L4 合计 {axis_posture:.0%}")),
         ("水平", num(tb), "种工具", _headline(breadth)),
         ("深度", num(tp90), "P90 轮/会话", _headline(depth)),
