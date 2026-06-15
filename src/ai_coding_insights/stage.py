@@ -162,3 +162,54 @@ def decide_stage(metrics: dict,
                 or [{"desc": "未达进阶期条件（兜底档）", "key": None}])
     return {"stage": num, "name": name, "criteria": criteria,
             "gaps": gaps, "values": v}
+
+
+@dataclass(frozen=True)
+class PostureBands:
+    """姿态健康带（初设值待校准，可覆盖）。"""
+    min_decision_points: int = 30   # 低于此样本不判
+    l3_healthy_floor: float = 0.25  # L3 主力下限
+    l4_healthy_floor: float = 0.05  # L4 健康带下沿
+    l4_healthy_ceiling: float = 0.20  # L4 健康带上限，> 即偏对抗
+    guide_floor: float = 0.25       # L3+L4 < 即引导力不足
+
+
+DEFAULT_POSTURE_BANDS = PostureBands()
+
+
+def diagnose_posture(posture_distribution: dict, decision_point_count: int,
+                     plan_mode_sessions: int = 0, thinking_sessions: int = 0,
+                     bands: PostureBands = DEFAULT_POSTURE_BANDS) -> dict:
+    """区间诊断姿态健康（不计入档位）。返回 {state, reason, values}。
+    state ∈ {样本不足, 偏对抗, 偏依赖, 放手为主, 健康}。"""
+    pd = normalize_posture(posture_distribution)
+    l3 = round(pd["L3"], 6)
+    l4 = round(pd["L4"], 6)
+    l34 = round(l3 + l4, 6)
+    dp = max(0, int(decision_point_count or 0))
+    vals = {"L3": l3, "L4": l4, "L3+L4": l34, "decision_point_count": dp}
+
+    if dp < bands.min_decision_points:
+        return {"state": "样本不足",
+                "reason": f"决策点 {dp} < {bands.min_decision_points}，样本不足不判姿态",
+                "values": vals}
+    if l4 > bands.l4_healthy_ceiling:
+        return {"state": "偏对抗",
+                "reason": f"L4 主导 {l4:.0%} 超健康带上限 {bands.l4_healthy_ceiling:.0%}",
+                "values": vals}
+    if l34 < bands.guide_floor:
+        has_depth = (int(plan_mode_sessions or 0) > 0
+                     or int(thinking_sessions or 0) > 0)
+        if has_depth:
+            return {"state": "放手为主",
+                    "reason": "引导力占比偏低，但有 Plan/深度推理旁证，判为结论环节以放手为主",
+                    "values": vals}
+        return {"state": "偏依赖",
+                "reason": f"引导力 L3+L4 {l34:.0%} < {bands.guide_floor:.0%}，主动给约束偏少",
+                "values": vals}
+    if l3 >= bands.l3_healthy_floor and l4 >= bands.l4_healthy_floor:
+        return {"state": "健康",
+                "reason": f"L3 主力 {l3:.0%}、L4 在健康带 {l4:.0%}", "values": vals}
+    return {"state": "健康",
+            "reason": f"引导力达 {l34:.0%}，L4 {l4:.0%} 偏保守但在健康范围",
+            "values": vals}

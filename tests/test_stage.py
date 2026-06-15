@@ -1,5 +1,6 @@
 from ai_coding_insights.stage import (
     assemble_posture, decide_stage, StageThresholds,
+    diagnose_posture, PostureBands,
 )
 
 
@@ -118,3 +119,45 @@ def test_assemble_posture_defensive_bad_values():
     # 负数/bool/非整数按 0 计；picks 非法按 0
     pd = assemble_posture({"L1": -3, "L2": True, "L3": "x", "L4": 10}, "bad")
     assert pd == {"L1": 0.0, "L2": 0.0, "L3": 0.0, "L4": 1.0}
+
+
+def test_posture_insufficient_sample():
+    r = diagnose_posture({"L3": 0.5, "L4": 0.5}, decision_point_count=10)
+    assert r["state"] == "样本不足"
+
+
+def test_posture_adversarial_l4_over_ceiling():
+    r = diagnose_posture({"L1": 0.2, "L2": 0.2, "L3": 0.35, "L4": 0.25},
+                         decision_point_count=100)
+    assert r["state"] == "偏对抗"
+
+
+def test_posture_healthy():
+    r = diagnose_posture({"L1": 0.2, "L2": 0.25, "L3": 0.4, "L4": 0.15},
+                         decision_point_count=100)
+    assert r["state"] == "健康"
+
+
+def test_posture_dependent_low_guidance():
+    r = diagnose_posture({"L1": 0.5, "L2": 0.35, "L3": 0.1, "L4": 0.05},
+                         decision_point_count=100)
+    assert r["state"] == "偏依赖"
+
+
+def test_posture_handsoff_with_depth_evidence():
+    r = diagnose_posture({"L1": 0.5, "L2": 0.35, "L3": 0.1, "L4": 0.05},
+                         decision_point_count=100, plan_mode_sessions=3)
+    assert r["state"] == "放手为主"
+
+
+def test_posture_l4_ceiling_boundary_inclusive():
+    r = diagnose_posture({"L1": 0.2, "L2": 0.25, "L3": 0.35, "L4": 0.2},
+                         decision_point_count=100)
+    assert r["state"] == "健康"
+
+
+def test_posture_bands_overridable():
+    bands = PostureBands(l4_healthy_ceiling=0.10)
+    r = diagnose_posture({"L1": 0.2, "L2": 0.25, "L3": 0.4, "L4": 0.15},
+                         decision_point_count=100, bands=bands)
+    assert r["state"] == "偏对抗"
