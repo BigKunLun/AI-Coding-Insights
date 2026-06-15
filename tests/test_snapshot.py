@@ -59,3 +59,17 @@ def test_save_snapshot_leaves_no_tmp_file(tmp_path):
     save_snapshot({"a": 1}, {}, {}, "2026-06-02T00:00:00+00:00", {}, dir=tmp_path)
     assert not list(tmp_path.glob("*.tmp"))
     assert (tmp_path / "2026-06-02.json").exists()
+
+
+def test_snapshot_posture_rubric_is_3(tmp_path):
+    """双轴口径起，posture_rubric 推进到 3，拦截跨口径同比。"""
+    save_snapshot(
+        {},
+        {"L1": 1.0, "L2": 0.0, "L3": 0.0, "L4": 0.0},
+        {},
+        "2026-06-15T00:00:00Z",
+        {},
+        dir=tmp_path,
+    )
+    snap = load_latest(dir=tmp_path)
+    assert snap["posture_rubric"] == 3

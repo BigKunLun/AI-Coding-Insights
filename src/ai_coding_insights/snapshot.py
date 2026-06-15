@@ -27,7 +27,7 @@ def save_snapshot(metrics: dict, posture: dict, outcome: dict, generated_at: str
         "window": window,
         "metrics": metrics,
         "posture_distribution": posture,
-        "posture_rubric": 2,    # 姿势口径版本（2=逐 turn 语义分档，2026-06-12 起）。当前
+        "posture_rubric": 3,    # 姿势口径版本（3=双轴评级+健康带，2026-06-15 起；跨 rubric 不可同比）。当前
                                 # diff_metrics 不消费此字段、posture 不参与同比；留作未来跨 rubric 守卫位
         "outcome": outcome,
     }

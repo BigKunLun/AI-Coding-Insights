@@ -85,7 +85,7 @@ def test_render_profile_snapshot_stores_assembled(tmp_path):
     assert rc == 0
     snap = json.loads(next(snap_dir.glob("*.json")).read_text())
     assert snap["posture_distribution"]["L1"] == 0.5
-    assert snap["posture_rubric"] == 2          # 口径标记：v2 逐 turn 语义分档
+    assert snap["posture_rubric"] == 3          # 口径标记：v3 双轴评级+健康带
 
 
 def test_render_profile_with_metrics_and_snapshot(tmp_path):
