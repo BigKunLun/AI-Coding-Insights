@@ -66,6 +66,48 @@ def test_auto_scan_report_includes_data_health(tmp_path):
     assert "数据健康" in html and "2.1.158" in html
 
 
+def test_auto_scan_window_aligns_decision_not_config(tmp_path):
+    """接缝割裂回归：auto-scan 写快照的 lookback_days 须对齐窗口决策，而非 cfg.lookback_days。
+
+    构造 ok 场景——上次快照在 40 天前（decision: ok, lookback=40），而 cfg 默认 30。
+    会话落在 35 天前（介于 30 与 40 之间）：
+      - 修复后 days=40 → 会话被纳入，今日快照 window.lookback_days==40，并带 data_start/truncated；
+      - bug 下 days=30 → 会话被 cutoff 漏掉 → empty-scan skip → 不写今日快照（退回 40 天前旧快照）。
+    """
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    snap = tmp_path / "snap"
+    snap.mkdir()
+    d40 = (now - timedelta(days=40)).date().isoformat()
+    (snap / f"{d40}.json").write_text(
+        json.dumps({"generated_at": d40 + "T00:00:00+00:00",
+                    "metrics": {}, "posture_distribution": {}}, ensure_ascii=False),
+        encoding="utf-8")
+    proj = tmp_path / "projects" / "p1"
+    proj.mkdir(parents=True)
+    work = tmp_path / "work"
+    work.mkdir()
+    ts = (now - timedelta(days=35)).isoformat()
+    lines = [
+        {"type": "user", "sessionId": "s1", "cwd": str(work), "uuid": "u1",
+         "timestamp": ts, "message": {"content": "做点事"}},
+        {"type": "assistant", "timestamp": ts,
+         "message": {"model": "claude-opus-4-8",
+                     "content": [{"type": "tool_use", "name": "Bash", "input": {}}]}},
+    ]
+    (proj / "s1.jsonl").write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
+
+    rc = _run(tmp_path, tmp_path / "projects")
+    assert rc == 0
+    from ai_coding_insights.snapshot import load_latest
+    saved = load_latest(dir=snap)
+    # 确实写了今天的新快照（bug 下会漏掉 35 天前会话 → empty-scan skip → 退回旧快照）
+    assert saved["generated_at"].startswith(today)
+    assert saved["window"]["lookback_days"] == 40   # 对齐 decision，不是 cfg 的 30
+    assert "data_start" in saved["window"]           # 与 emit-batches 同口径补检测
+    assert "truncated" in saved["window"]
+
+
 def test_auto_scan_logs_exception_instead_of_swallowing(tmp_path, monkeypatch):
     import ai_coding_insights.cli as cli
     projects = _make_projects(tmp_path)

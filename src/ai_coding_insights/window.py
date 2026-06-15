@@ -4,7 +4,7 @@ v5 把取数从「固定 30 天」改为「自上次检查以来的增量窗口�
 本模块只负责纯函数决策，不碰 IO/scan。
 
 规则：
-- 首次（无上次快照）：回看 cap 天（默认 45）。
+- 首次（无上次快照）：回看 floor 天（默认 30，对齐 CC 默认保留期）。
 - 距上次检查不足 floor 天（默认 30）：拒绝，数据不足以测评进步。
 - 否则：回看 min(N, cap) 天，N 为距上次检查天数。
 """
@@ -41,7 +41,10 @@ class WindowDecision:
 def decide_window(last_check_date: date | None, today: date,
                   floor: int = WINDOW_FLOOR_DAYS, cap: int = WINDOW_CAP_DAYS) -> WindowDecision:
     if last_check_date is None:
-        return WindowDecision("first", cap, today - timedelta(days=cap), today, None, None, None)
+        # 首次回看 floor（非 cap）：CC 默认 cleanupPeriodDays=30 只物理保留 30 天 transcript，
+        # 名义回看 45 天在默认环境下必然触发 truncated——制造「报告写 45、实际只有 30」的
+        # 认知割裂。用 floor 与物理保留期 + 增量门槛对齐，cap 仅作增量路径回看上限。
+        return WindowDecision("first", floor, today - timedelta(days=floor), today, None, None, None)
     n = (today - last_check_date).days
     if n < floor:
         return WindowDecision(

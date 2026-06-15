@@ -485,7 +485,7 @@ def _fmt_window(w: dict | None, lookback_fallback: int) -> str:
     if not w:
         return f"近 {lookback_fallback} 天"
     if w.get("status") == "first":
-        return f"首次基线 · 近 {int(w.get('lookback_days', 45))} 天"
+        return f"首次基线 · 近 {int(w.get('lookback_days', 30))} 天"
     s, u, d = w.get("since_date"), w.get("until_date"), w.get("lookback_days")
     return (f"取数 {escape(str(s))} → {escape(str(u))}（{int(d)} 天）"
             if s and u else f"近 {lookback_fallback} 天")

@@ -1,6 +1,6 @@
 """scan --emit-batches 接入增量窗口决策的端到端测试。
 
-覆盖三种窗口分支：首次（无快照，cap 45）/ 不足拒绝（N<30，too_soon）/
+覆盖三种窗口分支：首次（无快照，floor 30）/ 不足拒绝（N<30，too_soon）/
 正常（N=40，lookback==40）。测试聚焦 _window.json 与 manifest 的窗口字段，
 不依赖真实会话数（用空 projects 目录即可）。
 """
@@ -46,13 +46,13 @@ def _run(tmp_path, snap_dir):
     return rc, batches
 
 
-def test_first_run_uses_cap_45(tmp_path):
+def test_first_run_uses_floor_30(tmp_path):
     snap = tmp_path / "snap"      # 不创建/留空 → 首次
     rc, batches = _run(tmp_path, snap)
     assert rc == 0
     win = json.loads((batches / "_window.json").read_text(encoding="utf-8"))
     assert win["status"] == "first"
-    assert win["lookback_days"] == 45
+    assert win["lookback_days"] == 30   # 首次回看 floor=30（对齐 CC 默认保留期）
 
 
 def test_too_soon_rejects_and_emits_no_batches(tmp_path, capsys):
@@ -96,7 +96,7 @@ def _projects_with_session(tmp_path: Path, ts: str) -> Path:
 
 def test_window_json_has_data_start_and_truncated_keys(tmp_path):
     """正常路径：_window.json 透传 data_start 与 truncated 两键。"""
-    snap = tmp_path / "snap"      # 首次基线 → since 为 today-45
+    snap = tmp_path / "snap"      # 首次基线 → since 为 today-30
     batches = tmp_path / "batches"
     # data_start 设在很早（远早于 since），应判 truncated=True
     projects = _projects_with_session(tmp_path, "2020-01-01T00:00:00Z")
@@ -110,9 +110,9 @@ def test_window_json_has_data_start_and_truncated_keys(tmp_path):
 
 
 def test_window_truncated_true_when_data_start_after_since(tmp_path):
-    snap = tmp_path / "snap"      # 首次基线 → since 为 today-45
+    snap = tmp_path / "snap"      # 首次基线 → since 为 today-30
     batches = tmp_path / "batches"
-    # data_start = 今天（远晚于 since=today-45）→ 截断
+    # data_start = 今天（远晚于 since=today-30）→ 截断
     today_iso = datetime.now(timezone.utc).date().isoformat() + "T00:00:00Z"
     projects = _projects_with_session(tmp_path, today_iso)
     rc = main(["scan", "--config", _cfg(tmp_path), "--projects-dir", str(projects),

@@ -435,11 +435,20 @@ def _cmd_auto_scan(args) -> int:
         now = datetime.now(timezone.utc)
         append_rolling_log(log_file, f"{now.isoformat()} start day={today_str}")
         cfg = load_config(resolve_config_path(args.config, args.plugin_root))
-        days = args.days or cfg.lookback_days
 
-        # 读上次快照决定 since（防御：快照缺 generated_at 或格式异常时安全降级）
+        # 读上次快照决定窗口（防御：快照缺 generated_at 或格式异常时安全降级）
         prev_snapshot = load_latest(dir=Path(args.snapshot_dir))
         prev_generated = (prev_snapshot or {}).get("generated_at")
+        window_decision = decide_window(
+            date.fromisoformat(prev_generated[:10]) if prev_generated else None,
+            now.date())
+        if window_decision.status == "too_soon":
+            append_rolling_log(log_file, f"{now.isoformat()} skip too_soon")
+            return 0
+        # 取数天数对齐窗口决策（首次=floor，增量=min(N,cap)），不再用 cfg.lookback_days——
+        # 否则快照/报告标 cfg 天数却按 decision 的 since 取数，两者割裂（与 emit-batches 同口径）。
+        days = args.days or window_decision.lookback_days
+
         since_str = prev_generated[:10] if prev_generated else ""
         if since_str:
             try:
@@ -448,13 +457,6 @@ def _cmd_auto_scan(args) -> int:
                 since = now - timedelta(days=days)
         else:
             since = now - timedelta(days=days)
-
-        window_decision = decide_window(
-            date.fromisoformat(prev_generated[:10]) if prev_generated else None,
-            now.date())
-        if window_decision.status in ("too_soon",):
-            append_rolling_log(log_file, f"{now.isoformat()} skip too_soon")
-            return 0
 
         sessions = discover_sessions(Path(args.projects_dir), cfg.discovery_rules,
                                      days, now, since=since)
@@ -517,11 +519,17 @@ def _cmd_auto_scan(args) -> int:
         # 保存快照，确保下次 auto-scan 窗口增量推进
         outcome = {}
         snap_metrics = {k: v for k, v in metrics_dict.items() if k in _CORE_KEYS}
+        # 窗口标注与 emit-batches 同口径：透传 decision 全字段，并补 data_start/truncated
+        # 检测（不再硬编码 truncated=False），让快照/报告如实反映本机清理截断。
+        data_start = detect_data_start(Path(args.projects_dir))
+        window_dict = window_decision.to_dict()
+        window_dict["lookback_days"] = days
+        window_dict["data_start"] = data_start
+        window_dict["truncated"] = is_window_truncated(window_decision.since_date, data_start)
+        window_dict["mode"] = cfg.mode
         save_snapshot(snap_metrics, posture,
                       {"landed": outcome.get("landed"), "total": outcome.get("total")},
-                      meta["generated_at"],
-                      {"lookback_days": days, "status": window_decision.status,
-                       "truncated": False, "mode": cfg.mode},
+                      meta["generated_at"], window_dict,
                       dir=Path(args.snapshot_dir))
         append_rolling_log(log_file,
                            f"{now.isoformat()} ok sessions={len(sessions)} -> {out_file}")

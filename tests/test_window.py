@@ -8,11 +8,13 @@ from ai_coding_insights.window import (
 )
 
 
-def test_first_run_uses_cap():
+def test_first_run_uses_floor():
+    # 首次回看 floor=30，对齐 CC 默认 cleanupPeriodDays=30 的物理保留期，
+    # 避免名义窗口（旧 cap=45）在默认环境下必然触发 truncated 的认知割裂。
     d = decide_window(None, date(2026, 6, 10))
     assert d.status == "first"
-    assert d.lookback_days == 45
-    assert d.since_date == date(2026, 4, 26)
+    assert d.lookback_days == 30
+    assert d.since_date == date(2026, 5, 11)   # 06-10 减 30 天
     assert d.until_date == date(2026, 6, 10)
     assert d.last_check_date is None
     assert d.days_since_last is None
@@ -77,8 +79,8 @@ def test_to_dict_first():
     out = d.to_dict()
     assert out == {
         "status": "first",
-        "lookback_days": 45,
-        "since_date": "2026-04-26",
+        "lookback_days": 30,
+        "since_date": "2026-05-11",
         "until_date": "2026-06-10",
         "last_check_date": None,
         "days_since_last": None,
