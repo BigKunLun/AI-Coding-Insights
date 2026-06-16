@@ -52,6 +52,27 @@ def test_repo_outcome_file_overlap(repo):
     assert r == RepoOutcome(landed_count=1, total_count=2)
 
 
+def test_repo_outcome_excludes_other_author(repo):
+    # --author 限本机 user.email：他人提交即便改了同一文件也不计入。
+    root = repo_root(str(repo))
+    (repo / "a.py").write_text("1"); _git(repo, "add", "a.py")
+    _git(repo, "-c", "user.email=me@x.com", "-c", "user.name=me", "commit", "-m", "mine")
+    (repo / "a.py").write_text("2"); _git(repo, "add", "a.py")
+    _git(repo, "-c", "user.email=other@y.com", "-c", "user.name=other", "commit", "-m", "theirs")
+    _git(repo, "config", "user.email", "me@x.com")
+    since = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    r = repo_outcome(root, {root + "/a.py"}, since)
+    assert r == RepoOutcome(landed_count=1, total_count=1)   # 只本人那条提交计入
+
+
+def test_repo_root_subdir_and_failsafe(repo, tmp_path):
+    import os
+    sub = repo / "pkg" / "mod"; sub.mkdir(parents=True)
+    root = repo_root(str(sub))
+    assert root is not None and os.path.samefile(root, str(repo))   # 子目录解析到仓库顶层
+    assert repo_root(str(tmp_path / "nope")) is None                # 非 git / 不存在 → None
+
+
 def test_repo_outcome_non_git_failsafe(tmp_path):
     r = repo_outcome(str(tmp_path), {"/x/a.py"}, datetime(2000, 1, 1, tzinfo=timezone.utc))
     assert r == RepoOutcome(0, 0)
