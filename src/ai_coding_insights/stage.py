@@ -6,7 +6,8 @@
 成熟度轴（decide_stage）改为绝对值闸门：从 aggregate 取活跃天数、有效输入条数、
 工具广度等硬指标的绝对量，逐档过门——根治旧口径下低用量者凭 posture 比例
 虚高被抬档的问题（比例只反映「这点用量里怎么用」，不反映「用了多少」）。
-深度信号（思考/子代理/Plan 任一）与高阶编排（真并行/后台/自建扩展）为合成信号。
+深度信号（子代理/Plan 任一，thinking 默认开无区分度故剔除）与高阶编排
+（真并行/后台/自建扩展）为合成信号。
 git 落地次数为 git 主锚硬证据（见 git_outcome.py），仅作引领期闸门。
 仍属软信号初筛，不得直接用于奖惩；阈值初设值待人群分位校准，整体可覆盖。
 
@@ -89,8 +90,9 @@ def _stage_values(m: dict, t: StageThresholds) -> dict:
             return int(round(float(m.get(k, 0) or 0)))
         except (TypeError, ValueError):
             return 0
-    depth_signal = max(g("thinking_sessions"), g("subagent_sessions"),
-                       g("plan_mode_sessions"))
+    # 深度信号只认主动行为：thinking 是 CC 默认开启的配置、几乎人人非零、无区分度，
+    # 计入它会把 S3 深度门架空，故剔除。subagent/plan 才是用户主动深度参与的证据。
+    depth_signal = max(g("subagent_sessions"), g("plan_mode_sessions"))
     advanced = sum(1 for ok in (
         g("max_parallel_agents") >= t.s4_parallel_min,
         g("background_sessions") >= t.s4_background_min,
@@ -127,7 +129,7 @@ def _stages(t: StageThresholds):
              lambda v: v["human_input_count"] >= t.s3_human_input),
             (f"工具广度 ≥ {t.s3_tool_breadth} 种", "tool_breadth",
              lambda v: v["tool_breadth"] >= t.s3_tool_breadth),
-            (f"深度信号 ≥ {t.s3_depth_signal}（思考/子代理/Plan 任一）", "depth_signal",
+            (f"深度信号 ≥ {t.s3_depth_signal}（子代理/Plan 任一）", "depth_signal",
              lambda v: v["depth_signal"] >= t.s3_depth_signal),
         ]),
         (2, "进阶期", [
@@ -149,8 +151,12 @@ def decide_stage(metrics: dict,
     v = _stage_values(metrics or {}, thresholds)
     stages = _stages(thresholds)
     matched = len(stages) - 1
-    for i, (_n, _nm, conds) in enumerate(stages):
-        if all(pred(v) for _, _, pred in conds):
+    # 档位单调蕴含：判第 i 档成立 = 满足本档门「且」满足所有更低档的门
+    # （stages 从高到低，i 以下即 stages[i:]）。根治高档不蕴含低档门导致的越级。
+    for i, _ in enumerate(stages):
+        if all(pred(v)
+               for _, _, lower in stages[i:]
+               for _, _, pred in lower):
             matched = i
             break
     num, name, conds = stages[matched]
@@ -172,6 +178,7 @@ class PostureBands:
     l4_healthy_floor: float = 0.05  # L4 健康带下沿
     l4_healthy_ceiling: float = 0.20  # L4 健康带上限，> 即偏对抗
     guide_floor: float = 0.25       # L3+L4 < 即引导力不足
+    min_handsoff_plan_sessions: int = 2  # 引导力不足时翻判「放手为主」所需的 Plan 次数（初设值待校准）
 
 
 DEFAULT_POSTURE_BANDS = PostureBands()
@@ -193,16 +200,24 @@ def diagnose_posture(posture_distribution: dict, decision_point_count: int,
         return {"state": "样本不足",
                 "reason": f"决策点 {dp} < {bands.min_decision_points}，样本不足不判姿态",
                 "values": vals}
+    # 无姿态观测守卫：四档归一后和≈0 表示根本没有 LLM 姿态数据（auto-scan/obs 缺失路径
+    # 会传全零分布而 dp 真实），此时绝不能凭「没有数据」编出自信负面结论 → 按样本不足处理。
+    if sum(pd.values()) < 1e-9:
+        return {"state": "样本不足",
+                "reason": "无 LLM 姿态观测数据（姿态分布为空），按样本不足处理不判姿态",
+                "values": vals}
     if l4 > bands.l4_healthy_ceiling:
         return {"state": "偏对抗",
                 "reason": f"L4 主导 {l4:.0%} 超健康带上限 {bands.l4_healthy_ceiling:.0%}",
                 "values": vals}
     if l34 < bands.guide_floor:
-        has_depth = (int(plan_mode_sessions or 0) > 0
-                     or int(thinking_sessions or 0) > 0)
-        if has_depth:
+        # thinking 是 CC 默认开启的配置、几乎人人非零、无区分度，不再当旁证（故忽略
+        # thinking_sessions 形参，仅为兼容调用方而保留）。只有主动进 Plan mode 才算
+        # 「放手为主」的证据，且要求达到保守量级——一次偶发不足以证明成熟放手。
+        if int(plan_mode_sessions or 0) >= bands.min_handsoff_plan_sessions:
             return {"state": "放手为主",
-                    "reason": "引导力占比偏低，但有 Plan/深度推理旁证，判为结论环节以放手为主",
+                    "reason": (f"引导力占比偏低，但 Plan mode 达 {int(plan_mode_sessions)} 次"
+                               f"（≥{bands.min_handsoff_plan_sessions}），判为结论环节以放手为主"),
                     "values": vals}
         return {"state": "偏依赖",
                 "reason": f"引导力 L3+L4 {l34:.0%} < {bands.guide_floor:.0%}，主动给约束偏少",

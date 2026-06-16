@@ -26,24 +26,49 @@ def test_advancing_stage():
 
 
 def test_master_stage_needs_depth_signal():
-    miss = decide_stage(_m(active_days=14, human_input_count=400, tool_breadth=11))
+    # thinking 默认开、无区分度，不再计入 depth_signal：即便 thinking 拉满也不达深度门
+    miss = decide_stage(_m(active_days=14, human_input_count=400, tool_breadth=11,
+                           thinking_sessions=9))
     assert miss["name"] == "进阶期"
     assert any(g["key"] == "depth_signal" for g in miss["gaps"])
+    # 只有主动信号（subagent/plan）才能提供深度
     ok = decide_stage(_m(active_days=14, human_input_count=400, tool_breadth=11,
-                         thinking_sessions=1))
+                         subagent_sessions=1))
     assert ok["name"] == "精通期"
 
 
+def test_depth_signal_excludes_thinking():
+    # depth_signal 只取 max(subagent, plan)，thinking 不计入（默认开、无区分度）
+    only_thinking = decide_stage(_m(thinking_sessions=9))
+    assert only_thinking["values"]["depth_signal"] == 0
+    with_plan = decide_stage(_m(thinking_sessions=9, plan_mode_sessions=3))
+    assert with_plan["values"]["depth_signal"] == 3
+    with_subagent = decide_stage(_m(subagent_sessions=4))
+    assert with_subagent["values"]["depth_signal"] == 4
+
+
 def test_leader_stage():
+    # 深度门由主动信号 subagent 提供（thinking 不再计入）
     r = decide_stage(_m(active_days=22, human_input_count=900, tool_breadth=16,
-                        thinking_sessions=3, max_parallel_agents=2, git_landed_count=8))
+                        subagent_sessions=3, max_parallel_agents=2, git_landed_count=8))
     assert r["stage"] == 4 and r["name"] == "引领期"
     assert r["gaps"] == []
 
 
+def test_leader_not_granted_when_lower_tier_gates_unmet():
+    # 高用量但工具广度=2、深度信号=0：不满足精通期门，绝不能越级到引领期。
+    # active_days/human_input/advanced/git_landed 都够 S4，但 tool_breadth<10。
+    r = decide_stage(_m(active_days=22, human_input_count=900, tool_breadth=2,
+                        thinking_sessions=3, max_parallel_agents=2,
+                        git_landed_count=8))
+    assert r["stage"] != 4 and r["name"] != "引领期"
+    # 落到能满足全部下层门的最高档：tool_breadth=2 连进阶期门(6)都不满足 → 探索期
+    assert r["name"] == "探索期"
+
+
 def test_leader_blocked_by_landed():
     r = decide_stage(_m(active_days=22, human_input_count=900, tool_breadth=16,
-                        thinking_sessions=3, max_parallel_agents=2, git_landed_count=1))
+                        subagent_sessions=3, max_parallel_agents=2, git_landed_count=1))
     assert r["name"] == "精通期"
     assert any(g["key"] == "git_landed_count" for g in r["gaps"])
 
@@ -67,8 +92,9 @@ def test_decide_stage_defensive_none():
 
 def test_advanced_orchestration_background_only_counts_one():
     # 仅后台会话达标 → 高阶编排信号计 1（够引领期的 s4_advanced=1 闸门那项）
+    # 深度门由主动信号 subagent 提供（thinking 不再计入）
     r = decide_stage(_m(active_days=22, human_input_count=900, tool_breadth=16,
-                        thinking_sessions=3, background_sessions=2, git_landed_count=8))
+                        subagent_sessions=3, background_sessions=2, git_landed_count=8))
     assert r["values"]["advanced_orchestration"] == 1
     assert r["name"] == "引领期"
 
@@ -126,6 +152,20 @@ def test_posture_insufficient_sample():
     assert r["state"] == "样本不足"
 
 
+def test_posture_zero_distribution_is_insufficient_sample():
+    # 全零姿态分布 = 根本没有 LLM 姿态观测数据；即便决策点很多也不得编出负面结论
+    zero = {"L1": 0.0, "L2": 0.0, "L3": 0.0, "L4": 0.0}
+    r = diagnose_posture(zero, decision_point_count=120)
+    assert r["state"] == "样本不足"
+
+
+def test_posture_zero_distribution_insufficient_even_with_depth():
+    # 全零分布 + 有 Plan 旁证：仍是无姿态数据，不得翻成「放手为主」
+    zero = {"L1": 0.0, "L2": 0.0, "L3": 0.0, "L4": 0.0}
+    r = diagnose_posture(zero, decision_point_count=120, plan_mode_sessions=1)
+    assert r["state"] == "样本不足"
+
+
 def test_posture_adversarial_l4_over_ceiling():
     r = diagnose_posture({"L1": 0.2, "L2": 0.2, "L3": 0.35, "L4": 0.25},
                          decision_point_count=100)
@@ -144,16 +184,34 @@ def test_posture_dependent_low_guidance():
     assert r["state"] == "偏依赖"
 
 
-def test_posture_handsoff_with_depth_evidence():
+def test_posture_handsoff_with_enough_plan_evidence():
+    # plan_mode_sessions >= 保守阈值（默认 2）才足以判「放手为主」
     r = diagnose_posture({"L1": 0.5, "L2": 0.35, "L3": 0.1, "L4": 0.05},
                          decision_point_count=100, plan_mode_sessions=3)
     assert r["state"] == "放手为主"
 
 
-def test_posture_handsoff_with_thinking_evidence():
+def test_posture_thinking_alone_is_not_handsoff():
+    # thinking 默认开、无区分度，不再当「放手为主」旁证；plan=1 偶发也不够 → 判偏依赖
     r = diagnose_posture({"L1": 0.5, "L2": 0.35, "L3": 0.1, "L4": 0.05},
-                         decision_point_count=100, thinking_sessions=2)
+                         decision_point_count=100, plan_mode_sessions=1,
+                         thinking_sessions=5)
+    assert r["state"] == "偏依赖"
+
+
+def test_posture_plan_handsoff_threshold_boundary_inclusive():
+    # plan_mode_sessions == 阈值（默认 2）边界含等号 → 放手为主
+    r = diagnose_posture({"L1": 0.5, "L2": 0.35, "L3": 0.1, "L4": 0.05},
+                         decision_point_count=100, plan_mode_sessions=2)
     assert r["state"] == "放手为主"
+
+
+def test_posture_handsoff_plan_threshold_overridable():
+    # 抬高保守阈值到 3：plan=2 不再够 → 偏依赖
+    bands = PostureBands(min_handsoff_plan_sessions=3)
+    r = diagnose_posture({"L1": 0.5, "L2": 0.35, "L3": 0.1, "L4": 0.05},
+                         decision_point_count=100, plan_mode_sessions=2, bands=bands)
+    assert r["state"] == "偏依赖"
 
 
 def test_posture_healthy_conservative_fallback():
