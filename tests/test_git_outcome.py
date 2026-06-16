@@ -73,6 +73,17 @@ def test_repo_root_subdir_and_failsafe(repo, tmp_path):
     assert repo_root(str(tmp_path / "nope")) is None                # 非 git / 不存在 → None
 
 
+def test_repo_outcome_through_symlinked_path(repo, tmp_path):
+    (repo / "a.py").write_text("1"); _git(repo, "add", "a.py")
+    _git(repo, "-c", "user.email=me@x.com", "-c", "user.name=me", "commit", "-m", "c1")
+    _git(repo, "config", "user.email", "me@x.com")
+    link = tmp_path / "link_to_repo"
+    link.symlink_to(repo)                       # edited 路径走 symlink，未解析
+    since = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    r = repo_outcome(str(repo), {str(link / "a.py")}, since)
+    assert r == RepoOutcome(landed_count=1, total_count=1)   # realpath 归一后仍命中
+
+
 def test_repo_outcome_non_git_failsafe(tmp_path):
     r = repo_outcome(str(tmp_path), {"/x/a.py"}, datetime(2000, 1, 1, tzinfo=timezone.utc))
     assert r == RepoOutcome(0, 0)

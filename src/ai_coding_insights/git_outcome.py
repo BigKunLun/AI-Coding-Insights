@@ -36,12 +36,16 @@ def repo_root(cwd: str) -> str | None:
 
 
 def normalize_to_repo_rel(abs_paths: set, root: str) -> set:
-    """会话编辑绝对路径 → 仓库相对路径（仅保留 root 下的）。路径只在本机内用。"""
+    """会话编辑绝对路径 → 仓库相对路径（仅保留 root 下的）。两侧 realpath 归一，规避 symlink 错配。路径只在本机内用。"""
     rel = set()
-    base = root.rstrip(os.sep) + os.sep
+    real_root = os.path.realpath(root)
+    base = real_root.rstrip(os.sep) + os.sep
     for p in abs_paths:
-        if isinstance(p, str) and p.startswith(base):
-            rel.add(os.path.relpath(p, root))
+        if not isinstance(p, str):
+            continue
+        rp = os.path.realpath(p)
+        if rp.startswith(base):
+            rel.add(os.path.relpath(rp, real_root))
     return rel
 
 
@@ -60,7 +64,8 @@ def window_commit_file_sets(cwd: str, since: datetime) -> list:
     email = (_run_git(cwd, "config", "user.email") or "").strip()
     if not email:
         return []
-    out = _run_git(cwd, "log", f"--since={since.isoformat()}",
+    out = _run_git(cwd, "-c", "core.quotepath=false", "log",
+                   f"--since={since.isoformat()}",
                    f"--author={email}", "--no-merges", "--name-only",
                    "--pretty=format:%x01")
     if out is None:
