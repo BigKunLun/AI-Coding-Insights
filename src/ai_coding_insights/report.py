@@ -262,6 +262,8 @@ def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
     sections += _bar_section(tool_session_counts or {}, "高频工具 Top 10", top_n=10)
     sections += _bar_section(skill_freq_counts or {}, "技能频次 Top 8（调用次数）", top_n=8)
     sections += _bar_section(mcp_server_counts or {}, "MCP Server Top 8", top_n=8)
+    sections += ('<div class="fine-note">广度看分布不看总数：头部断层＝你的工作流主轴，'
+                 '长尾低频项可按需保留或卸载。</div>')
     return sections
 
 
