@@ -614,7 +614,14 @@ def _depth_card(block: dict) -> str:
 
 def render_profile_report(profile: dict, meta: dict,
                           metrics: dict | None = None,
-                          diff: dict | None = None) -> str:
+                          diff: dict | None = None,
+                          out: dict | None = None) -> str:
+    """渲染画像 HTML。
+
+    out（可选）：传入一个 dict，函数会回填本次渲染内部已算出的两个判定结果——
+    posture_state（姿态健康态字符串）与 stage_name（成熟度档位名）。这是接缝单一真相源：
+    cli 据此打印到 stdout 供 LLM 编排端口头小结消费，避免 cli 另起一套调用重算出不一致的值。
+    metrics 缺失时两值为 None（无判定）。"""
     # posture_distribution 由规则层组装注入（assemble_posture，恒 0-1 比例，
     # 和为 1 或全零）；此处归一是对手喂 dict 的防御性兜底，无百分数形态的正常来源。
     pd = normalize_posture(profile.get("posture_distribution", {}) or {})
@@ -765,6 +772,10 @@ def render_profile_report(profile: dict, meta: dict,
     )
     # 阶段判定只算一次：横幅大字 / 判据卡共用同一结果
     stage = None if metrics is None else decide_stage(m)
+    # 接缝回填：把本次内部已算出的 state/stage name 透给 cli（单一真相源，见 docstring）。
+    if out is not None:
+        out["posture_state"] = posture_diag["state"] if posture_diag else None
+        out["stage_name"] = stage["name"] if stage else None
     # 大堆叠条：段内嵌百分比；宽度公式照搬旧 segs（pct(t)/total_pd*100），只是放大+内嵌文字。
     # 段内文字色按档位身份定（非 DOM 位置）：L1-L3 浅/中底用深字，仅 L4 深底用白字
     _BSEG_INK = {"L1": "#0e3a4a", "L2": "#0e3a4a", "L3": "#0e3a4a", "L4": "#ffffff"}

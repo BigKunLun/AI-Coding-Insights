@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from ai_coding_insights.cli import main
@@ -72,6 +73,72 @@ def test_render_profile_without_obs_warns_and_zeroes(tmp_path, capsys):
                "--snapshot-dir", str(tmp_path / "snaps")])
     assert rc == 0
     assert "姿势分布按全零渲染" in capsys.readouterr().err
+
+
+def test_render_profile_stdout_emits_posture_state_and_stage(tmp_path, capsys):
+    """接缝：render-profile stdout 必须打印「姿态健康态:」与「成熟度档位:」两行，
+    且其值与对同一输入直接调用规则层（diagnose_posture/decide_stage）算出的
+    state/stage name 完全一致——LLM 编排端据此口头小结，不得自行重算。"""
+    from ai_coding_insights.stage import (assemble_posture, decide_stage,
+                                          diagnose_posture)
+    from ai_coding_insights.obs_check import sum_posture_counts
+
+    prof = _write_profile(tmp_path)
+    mf = _write_metrics(tmp_path, option_pick_count=5, turn_p90=20,
+                        decision_point_count=100, plan_mode_sessions=1,
+                        thinking_sessions=2)
+    obs = [("s1", {"L1": 10, "L2": 5, "L3": 41, "L4": 19})]
+    glob_pat = _write_obs(tmp_path, obs)
+    rc = main(["render-profile", "--profile", str(prof), "--metrics", str(mf),
+               "--obs-glob", glob_pat, "--out", str(tmp_path / "r.html"),
+               "--no-snapshot", "--snapshot-dir", str(tmp_path / "snaps")])
+    assert rc == 0
+    out = capsys.readouterr().out
+
+    # 规则层独立重算同一输入的 state/stage name（与渲染同口径）
+    metrics = json.loads(mf.read_text())
+    assembled = assemble_posture(sum_posture_counts([
+        {"session_id": sid, "posture_counts": pc} for sid, pc in obs]),
+        metrics.get("option_pick_count", 0))
+    state = diagnose_posture(assembled, metrics.get("decision_point_count", 0),
+                             metrics.get("plan_mode_sessions", 0),
+                             metrics.get("thinking_sessions", 0))["state"]
+    stage_name = decide_stage(metrics)["name"]
+
+    assert f"姿态健康态: {state}" in out
+    assert f"成熟度档位: {stage_name}" in out
+
+
+def test_auto_scan_snapshot_omits_unmeasured_git_metrics(tmp_path):
+    """Bug B 触发1：auto-scan 为省成本传 repo_outcomes={}，git 指标实为「本次未测量」
+    而非真值 0。这些 key 不得以 0 落进快照，否则下次真实报告会把 0→真值当成假上涨。
+    断言 auto-scan 写出的快照中 git_landed_count/git_commit_total/landed_ratio
+    缺失或为 None，从而下游 None 守卫生效。"""
+    from ai_coding_insights.snapshot import load_latest
+
+    proj = tmp_path / "projects" / "p1"
+    proj.mkdir(parents=True)
+    work = tmp_path / "work"
+    work.mkdir()
+    ts = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    lines = [
+        {"type": "user", "sessionId": "s1", "cwd": str(work), "uuid": "u1",
+         "timestamp": ts, "message": {"content": "做点事"}},
+        {"type": "assistant", "timestamp": ts,
+         "message": {"model": "claude-opus-4-8",
+                     "content": [{"type": "tool_use", "name": "Bash", "input": {}}]}},
+    ]
+    (proj / "s1.jsonl").write_text("\n".join(json.dumps(x) for x in lines),
+                                   encoding="utf-8")
+    snap = tmp_path / "snap"
+    rc = main(["auto-scan", "--out-dir", str(tmp_path / "out"),
+               "--projects-dir", str(tmp_path / "projects"),
+               "--snapshot-dir", str(snap), "--state-dir", str(tmp_path / "state")])
+    assert rc == 0
+    saved = load_latest(dir=snap)
+    assert saved is not None
+    for k in ("git_landed_count", "git_commit_total", "landed_ratio"):
+        assert saved["metrics"].get(k) is None
 
 
 def test_render_profile_snapshot_stores_assembled(tmp_path):

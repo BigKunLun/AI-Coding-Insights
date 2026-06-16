@@ -1,4 +1,5 @@
-from ai_coding_insights.snapshot import save_snapshot, load_latest
+from ai_coding_insights.snapshot import (save_snapshot, load_latest, diff_metrics,
+                                         CURRENT_POSTURE_RUBRIC)
 
 
 def test_save_and_load_roundtrip(tmp_path):
@@ -73,3 +74,29 @@ def test_snapshot_posture_rubric_is_3(tmp_path):
     )
     snap = load_latest(dir=tmp_path)
     assert snap["posture_rubric"] == 3
+
+
+def test_diff_suppresses_caliber_keys_on_rubric_change():
+    """跨口径（prev rubric != 当前）：受口径影响的 git 指标不出 delta/箭头，
+    按「无可比基线」处理——升级边界第一次 diff 不得拿旧口径 prev 算伪涨跌。"""
+    prev = {"landed_ratio": 0.3, "git_landed_count": 2, "git_commit_total": 8,
+            "session_count": 4}
+    now = {"landed_ratio": 0.6, "git_landed_count": 6, "git_commit_total": 10,
+           "session_count": 9}
+    diff = diff_metrics(now, prev, prev_rubric=CURRENT_POSTURE_RUBRIC - 1)
+    for k in ("landed_ratio", "git_landed_count", "git_commit_total"):
+        assert diff[k]["no_base"] is True
+        assert diff[k]["arrow"] is None
+        assert diff[k]["delta"] is None
+    # 不受口径影响的 key 照常同比
+    assert diff["session_count"]["arrow"] == "↑"
+    assert diff["session_count"]["delta"] == 5
+
+
+def test_diff_same_rubric_compares_caliber_keys():
+    """口径一致时受口径影响的 key 正常同比（默认行为不变）。"""
+    prev = {"landed_ratio": 0.3, "git_landed_count": 2, "git_commit_total": 8}
+    now = {"landed_ratio": 0.6, "git_landed_count": 6, "git_commit_total": 10}
+    diff = diff_metrics(now, prev, prev_rubric=CURRENT_POSTURE_RUBRIC)
+    assert diff["git_landed_count"]["arrow"] == "↑"
+    assert diff["git_landed_count"]["delta"] == 4

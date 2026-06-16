@@ -320,7 +320,9 @@ def _cmd_render_profile(args) -> int:
     snap_dir = Path(args.snapshot_dir)
     prev = load_latest(dir=snap_dir)
     prev_metrics = (prev or {}).get("metrics")  # 旧格式快照缺 metrics 时按无基线降级
-    diff = diff_metrics(metrics, prev_metrics) if metrics is not None else None
+    prev_rubric = (prev or {}).get("posture_rubric")  # 跨口径边界 → diff 对受影响 key 不出同比
+    diff = (diff_metrics(metrics, prev_metrics, prev_rubric=prev_rubric)
+            if metrics is not None else None)
     window = None
     if getattr(args, "window", None):
         window = json.loads(Path(args.window).read_text(encoding="utf-8"))
@@ -340,7 +342,10 @@ def _cmd_render_profile(args) -> int:
         run["model"] = model
     if run:
         meta["run"] = run
-    html = render_profile_report(profile, meta, metrics, diff)
+    # render_diag 接缝：render_profile_report 回填它内部已算出的 posture_state / stage_name，
+    # cli 直接打印到 stdout 供 LLM 编排端口头小结取用（不在 cli 另起调用重算，避免值不一致）。
+    render_diag: dict = {}
+    html = render_profile_report(profile, meta, metrics, diff, out=render_diag)
     out = args.out or str(Path.cwd() / f"aci-report-{datetime.now().date().isoformat()}.html")
     out = _write_html(out, html)
     if not args.no_snapshot:
@@ -355,6 +360,10 @@ def _cmd_render_profile(args) -> int:
                       dir=snap_dir)
     print("姿势分布: " + " · ".join(
         f"{t} {assembled[t]:.0%}" for t in ("L1", "L2", "L3", "L4")))
+    # 接缝：姿态健康态 / 成熟度档位（值由 render_profile_report 算出回填，规则层单一真相源）。
+    # metrics 缺省时无判定，打「样本不足」/「—」占位，仍保证两行恒在（SKILL 据字段名取值）。
+    print("姿态健康态: " + (render_diag.get("posture_state") or "样本不足"))
+    print("成熟度档位: " + (render_diag.get("stage_name") or "—"))
     print(out)
     return 0
 
@@ -516,7 +525,12 @@ def _cmd_auto_scan(args) -> int:
 
         # 保存快照，确保下次 auto-scan 窗口增量推进
         outcome = {}
-        snap_metrics = {k: v for k, v in metrics_dict.items() if k in _CORE_KEYS}
+        # auto-scan 传 repo_outcomes={} 省成本，git 指标实为「本次未测量」而非真值 0。
+        # 不把它们以 0 写进快照——否则下次真实报告会把 0→真值当成假上涨（diff 的 None
+        # 守卫只对 None 生效，0 不算无基线）。这三个 key 不进 snap_metrics → 下次 prev 缺失 → 不出箭头。
+        _unmeasured_git = {"git_landed_count", "git_commit_total", "landed_ratio"}
+        snap_metrics = {k: v for k, v in metrics_dict.items()
+                        if k in _CORE_KEYS and k not in _unmeasured_git}
         # 窗口标注与 emit-batches 同口径：透传 decision 全字段，并补 data_start/truncated
         # 检测（不再硬编码 truncated=False），让快照/报告如实反映本机清理截断。
         data_start = detect_data_start(Path(args.projects_dir))

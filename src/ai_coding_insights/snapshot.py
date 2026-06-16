@@ -12,6 +12,14 @@ _CORE_KEYS = ["landed_ratio", "commit_count", "landed_count",
 
 _DATE_STEM = re.compile(r"^\d{4}-\d{2}-\d{2}$")  # 快照文件名仅认 YYYY-MM-DD，杂散 json 不参与排序
 
+# 姿势/指标口径版本（3=双轴评级+健康带，2026-06-15 起）。除姿势分布外，landed_ratio
+# 等 git 指标的定义也随版本变（v3 起 landed_ratio = 文件重叠落地 ÷ 窗口本人提交总数）。
+# diff_metrics 据此识别跨口径边界，对受口径影响的 key 不出同比（无可比基线）。
+CURRENT_POSTURE_RUBRIC = 3
+
+# 跨口径不可同比的 metrics key：定义随 rubric 变更，旧口径 prev 与新口径 now 求 delta 是伪涨跌。
+_CALIBER_SENSITIVE_KEYS = frozenset({"landed_ratio", "git_landed_count", "git_commit_total"})
+
 
 def save_snapshot(metrics: dict, posture: dict, outcome: dict, generated_at: str,
                   window: dict, dir: Path = DEFAULT_SNAPSHOT_DIR) -> Path:
@@ -27,8 +35,8 @@ def save_snapshot(metrics: dict, posture: dict, outcome: dict, generated_at: str
         "window": window,
         "metrics": metrics,
         "posture_distribution": posture,
-        "posture_rubric": 3,    # 姿势口径版本（3=双轴评级+健康带，2026-06-15 起；跨 rubric 不可同比）。当前
-                                # diff_metrics 不消费此字段、posture 不参与同比；留作未来跨 rubric 守卫位
+        "posture_rubric": CURRENT_POSTURE_RUBRIC,   # 姿势/指标口径版本（见常量注释）。
+                                # diff_metrics 据此对跨口径边界的受影响 key 不出同比（防伪涨跌）。
         "outcome": outcome,
     }
     # 临时文件 + 原子替换：写一半被打断不会留下截断 json 毁掉下次基线
@@ -60,23 +68,30 @@ def load_latest(before: str | None = None, dir: Path = DEFAULT_SNAPSHOT_DIR) -> 
     return loaded if isinstance(loaded, dict) else None
 
 
-def diff_metrics(current: dict, previous: dict | None) -> dict:
+def diff_metrics(current: dict, previous: dict | None,
+                 prev_rubric: int | None = None) -> dict:
     """计算 current 相对 previous 的增量同比。
 
     current/previous 是指标 dict（含 _CORE_KEYS 各键的数值；调用方负责构造）。
+    prev_rubric 为基线快照的口径版本（None=未知/旧格式快照，按口径一致处理）。
     - previous 为 None → 返回 {"baseline": True}（整体首次，无可比基线）
     - 否则对每个 _CORE_KEYS 的 k：
         - 基线键缺失或为 None（如上次是空 metrics 脏快照），或当前键为 None →
           标 no_base，不出假箭头（delta/arrow 均 None），根治 now-0 的满值假上涨。
+        - 跨口径边界（prev_rubric 已知且 != 当前）且 k 受口径影响（_CALIBER_SENSITIVE_KEYS）→
+          标 no_base，不出 delta/箭头：旧口径 prev 与新口径 now 求差是伪涨跌（如 landed_ratio
+          换了分母）。
         - 两边都有值 → 给出 now / prev / delta / arrow。
     """
     if previous is None:
         return {"baseline": True}
+    caliber_changed = prev_rubric is not None and prev_rubric != CURRENT_POSTURE_RUBRIC
     result: dict = {}
     for k in _CORE_KEYS:
         now = current.get(k)
         prev = previous.get(k)
-        if prev is None or now is None:            # 缺失/空基线 → 不出假箭头
+        if prev is None or now is None or (caliber_changed and k in _CALIBER_SENSITIVE_KEYS):
+            # 缺失/空基线、或跨口径受影响 key → 不出假箭头
             result[k] = {"now": now, "prev": prev, "delta": None,
                          "arrow": None, "no_base": True}
             continue
