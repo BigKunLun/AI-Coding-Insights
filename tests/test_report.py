@@ -177,9 +177,11 @@ def test_report_skill_frequency_uses_total_counts():
         "breadth":{"headline":"x"},"depth":{"headline":"y"},
         "outcome":{"headline":"z","landed":1,"total":2},"frictions":[],
         "evidence":[{"behavior":"b","pointer":"/p.jsonl#u"}]}
-    metrics = {"tool_breadth":5,"turn_p90":10,"active_days":3,"human_input_count":50,
+    metrics = {"tool_breadth":5,"turn_p90":10,"active_days":3,"human_input_count":53,
         "decision_point_count":40,"git_landed_count":1,"git_commit_total":2,"landed_ratio":0.5,
-        "skill_total_counts":{"openspec":50},"skill_counts":{"openspec":6}}
+        "skill_total_counts":{"openspec":137},"skill_counts":{"openspec":6}}
     html = render_profile_report(profile, {"included_projects":[],"session_count":6,
         "generated_at":"2026-06-15T00:00:00Z"}, metrics=metrics)
-    assert "50" in html and "openspec" in html   # 频次区体现调用次数 50，而非会话数 6
+    assert "技能频次" in html
+    assert "137" in html          # 137 仅可能来自技能频次区（调用次数），撞不到其他指标
+    assert "openspec" in html

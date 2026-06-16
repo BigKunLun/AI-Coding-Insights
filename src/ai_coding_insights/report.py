@@ -252,15 +252,15 @@ def _bar_section(counts: dict, title: str, top_n: int = 15) -> str:
 
 
 def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
-                                      skill_counts: dict | None,
+                                      skill_freq_counts: dict | None,
                                       mcp_server_counts: dict | None) -> str:
     """工具/技能/MCP 分布附录（默认折叠）。三组降序条形图。"""
-    if not tool_session_counts and not skill_counts and not mcp_server_counts:
+    if not tool_session_counts and not skill_freq_counts and not mcp_server_counts:
         return ""
 
     sections = ""
     sections += _bar_section(tool_session_counts or {}, "高频工具 Top 10", top_n=10)
-    sections += _bar_section(skill_counts or {}, "技能频次 Top 8（调用次数）", top_n=8)
+    sections += _bar_section(skill_freq_counts or {}, "技能频次 Top 8（调用次数）", top_n=8)
     sections += _bar_section(mcp_server_counts or {}, "MCP Server Top 8", top_n=8)
     return sections
 
