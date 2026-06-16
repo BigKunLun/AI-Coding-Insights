@@ -74,6 +74,10 @@ def parse_session(path) -> ParsedSession:
     skill_invoke_counts: dict = {}
     mcp_servers: set = set()        # 用 set 收集，最后转 sorted list
     edited_paths: set = set()       # 去重收集会话编辑文件路径（本机内匹配用，最后转 sorted list）
+    # 待确认编辑：tool_use_id → file_path。仅当后续 tool_result 表明该编辑成功落盘时
+    # 才收入 edited_paths——被拒绝（无对应结果）或报错（is_error）的编辑不收。
+    # 落地率是与奖励挂钩的硬指标，铁律「归属宁漏勿误」：宁可漏报，不可把没改成的文件算成 AI 落地。
+    pending_edits: dict = {}
     thinking_block_count = 0
     background_task_count = 0
     # 真并行按 message.id 聚合 Agent 数：CC 把同一轮并发的 N 个 Agent 拆成 N 条独立
@@ -171,11 +175,14 @@ def parse_session(path) -> ParsedSession:
                         if isinstance(skill, str) and skill:
                             skill_names.append(skill)
                             skill_invoke_counts[skill] = skill_invoke_counts.get(skill, 0) + 1
-                    # edited_paths：Edit/Write/MultiEdit/NotebookEdit 写入的文件路径
+                    # edited_paths：Edit/Write/MultiEdit/NotebookEdit 提议的文件路径——先挂入
+                    # pending_edits 待确认，不在此直接收。tool_use 的 input 只是 AI「提议」的编辑，
+                    # 不代表真落盘；真正收入 edited_paths 要等下面 tool_result 确认成功（无 is_error）。
                     if name in ("Edit", "Write", "MultiEdit", "NotebookEdit") and isinstance(inp, dict):
                         fp = inp.get("file_path") or inp.get("notebook_path")
-                        if isinstance(fp, str) and fp:
-                            edited_paths.add(fp)
+                        tu_id = b.get("id")
+                        if isinstance(fp, str) and fp and tu_id:
+                            pending_edits[tu_id] = fp
                     # mcp_servers：从 mcp__<server>__<tool> 解析 server 名
                     # 防御：parts[1] 非空才加入（防畸形工具名如 "mcp__"）
                     if name.startswith("mcp__"):
@@ -202,6 +209,21 @@ def parse_session(path) -> ParsedSession:
                                    if isinstance(tur_top, dict) else None)
                         if isinstance(answers, dict):
                             option_pick_count += len(answers)
+            # edited_paths 确认：tool_result 按 tool_use_id 配对 pending_edits。
+            # 成功判据保守取「存在对应 tool_result 且未标记 is_error」——失败/拒绝时
+            # tool_result 带 is_error（顶层 toolUseResult 为错误字符串），用户直接拒绝则根本无
+            # 对应 tool_result，两种情形该路径都不进 edited_paths。
+            if line.get("type") == "user" and pending_edits:
+                content = _msg_dict(line).get("content")
+                if isinstance(content, list):
+                    for b in content:
+                        if not (isinstance(b, dict) and b.get("type") == "tool_result"):
+                            continue
+                        tu_id = b.get("tool_use_id")
+                        if tu_id in pending_edits:
+                            fp = pending_edits.pop(tu_id)   # 同 id 只确认一次
+                            if not b.get("is_error"):
+                                edited_paths.add(fp)
             tur = line.get("toolUseResult")
             if isinstance(tur, dict):
                 go = tur.get("gitOperation")

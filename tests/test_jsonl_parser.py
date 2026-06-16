@@ -333,23 +333,81 @@ def test_parallel_agents_no_message_id_not_merged(tmp_path):
     assert s.max_parallel_agents == 1 and s.parallel_agent_turns == 0
 
 
+def _edit_use(tool_id, name, path):
+    """一条只含单个 Edit/Write/MultiEdit/NotebookEdit tool_use 的 assistant 记录。"""
+    key = "notebook_path" if name == "NotebookEdit" else "file_path"
+    return {"type": "assistant", "timestamp": "2026-06-01T00:01:00Z",
+            "message": {"model": "m", "content": [
+                {"type": "tool_use", "name": name, "id": tool_id, "input": {key: path}}]}}
+
+
+def _edit_ok(tool_id):
+    """对应一次成功落盘的编辑结果：tool_result 不带 is_error + 顶层有 structuredPatch。"""
+    return {"type": "user",
+            "message": {"content": [{"type": "tool_result", "tool_use_id": tool_id,
+                                     "content": "ok"}]},
+            "toolUseResult": {"structuredPatch": [
+                {"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 2, "lines": ["+x"]}]}}
+
+
+def _edit_err(tool_id):
+    """对应一次失败/报错的编辑结果：tool_result 标记 is_error，顶层 toolUseResult 为错误字符串。"""
+    return {"type": "user",
+            "message": {"content": [{"type": "tool_result", "tool_use_id": tool_id,
+                                     "is_error": True, "content": "Error: ..."}]},
+            "toolUseResult": "Error: File does not exist."}
+
+
 def test_parse_session_collects_edited_paths(tmp_path):
     lines = [
         {"type":"user","sessionId":"s2","cwd":"/repo","gitBranch":"main",
          "uuid":"u1","timestamp":"2026-06-01T00:00:00Z","message":{"content":"改代码"}},
-        {"type":"assistant","timestamp":"2026-06-01T00:01:00Z","message":{"model":"m",
-         "content":[
-            {"type":"tool_use","name":"Edit","input":{"file_path":"/repo/src/a.py"}},
-            {"type":"tool_use","name":"Write","input":{"file_path":"/repo/src/b.py"}},
-            {"type":"tool_use","name":"MultiEdit","input":{"file_path":"/repo/src/a.py"}},
-            {"type":"tool_use","name":"NotebookEdit","input":{"notebook_path":"/repo/nb.ipynb"}},
-            {"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}},
+        _edit_use("e1", "Edit", "/repo/src/a.py"), _edit_ok("e1"),
+        _edit_use("e2", "Write", "/repo/src/b.py"), _edit_ok("e2"),
+        _edit_use("e3", "MultiEdit", "/repo/src/a.py"), _edit_ok("e3"),
+        _edit_use("e4", "NotebookEdit", "/repo/nb.ipynb"), _edit_ok("e4"),
+        # Bash 不进 edited_paths（既有行为）
+        {"type":"assistant","timestamp":"2026-06-01T00:09:00Z","message":{"model":"m",
+         "content":[{"type":"tool_use","name":"Bash","id":"b1","input":{"command":"ls"}}]}},
     ]
     p = tmp_path / "s2.jsonl"
     p.write_text("\n".join(json.dumps(x) for x in lines))
     s = parse_session(p)
     assert set(s.edited_paths) == {"/repo/src/a.py", "/repo/src/b.py", "/repo/nb.ipynb"}
     assert len(s.edited_paths) == 3   # a.py 两次工具仍去重
+
+
+def test_rejected_or_errored_edit_not_collected(tmp_path):
+    """被拒绝/报错的编辑不得进 edited_paths（归属宁漏勿误，防虚高落地率）。"""
+    lines = [
+        {"type":"user","sessionId":"s7","cwd":"/repo","uuid":"u1",
+         "timestamp":"2026-06-01T00:00:00Z","message":{"content":"改"}},
+        # (a) 报错的 Edit：有对应结果但 is_error
+        _edit_use("x1", "Edit", "/repo/bad.py"), _edit_err("x1"),
+        # (b) 被拒绝的 Edit：根本没有对应结果记录（用户拒后无 tool_result）
+        _edit_use("x2", "Edit", "/repo/rejected.py"),
+        # (c) 成功的 Write：应进
+        _edit_use("x3", "Write", "/repo/good.py"), _edit_ok("x3"),
+    ]
+    p = tmp_path / "s7.jsonl"
+    p.write_text("\n".join(json.dumps(x) for x in lines))
+    s = parse_session(p)
+    assert set(s.edited_paths) == {"/repo/good.py"}
+    assert "/repo/bad.py" not in s.edited_paths
+    assert "/repo/rejected.py" not in s.edited_paths
+
+
+def test_edit_count_unchanged_by_edited_paths_fix(tmp_path):
+    """edit_count 仍以 structuredPatch 为准，不受 edited_paths 改动影响。"""
+    lines = [
+        _edit_use("c1", "Edit", "/repo/a.py"), _edit_ok("c1"),
+        _edit_use("c2", "Edit", "/repo/b.py"), _edit_err("c2"),  # 失败不计 edit_count
+    ]
+    p = tmp_path / "s8.jsonl"
+    p.write_text("\n".join(json.dumps(x) for x in lines))
+    s = parse_session(p)
+    assert s.edit_count == 1
+    assert set(s.edited_paths) == {"/repo/a.py"}
 
 
 def test_parse_session_skill_invoke_counts(tmp_path):
