@@ -331,3 +331,22 @@ def test_parallel_agents_no_message_id_not_merged(tmp_path):
     p = tmp_path / "s.jsonl"; p.write_text("\n".join(json.dumps(x) for x in lines))
     s = parse_session(p)
     assert s.max_parallel_agents == 1 and s.parallel_agent_turns == 0
+
+
+def test_parse_session_collects_edited_paths(tmp_path):
+    lines = [
+        {"type":"user","sessionId":"s2","cwd":"/repo","gitBranch":"main",
+         "uuid":"u1","timestamp":"2026-06-01T00:00:00Z","message":{"content":"改代码"}},
+        {"type":"assistant","timestamp":"2026-06-01T00:01:00Z","message":{"model":"m",
+         "content":[
+            {"type":"tool_use","name":"Edit","input":{"file_path":"/repo/src/a.py"}},
+            {"type":"tool_use","name":"Write","input":{"file_path":"/repo/src/b.py"}},
+            {"type":"tool_use","name":"MultiEdit","input":{"file_path":"/repo/src/a.py"}},
+            {"type":"tool_use","name":"NotebookEdit","input":{"notebook_path":"/repo/nb.ipynb"}},
+            {"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}},
+    ]
+    p = tmp_path / "s2.jsonl"
+    p.write_text("\n".join(json.dumps(x) for x in lines))
+    s = parse_session(p)
+    assert set(s.edited_paths) == {"/repo/src/a.py", "/repo/src/b.py", "/repo/nb.ipynb"}
+    assert len(s.edited_paths) == 3   # a.py 两次工具仍去重

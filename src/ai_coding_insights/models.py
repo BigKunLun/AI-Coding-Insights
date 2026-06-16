@@ -63,6 +63,7 @@ class ParsedSession:
     parallel_agent_turns: int = 0   # 单条 message 内并发派出 ≥2 个 Agent 的轮次数
     cc_versions: list = field(default_factory=list)        # 去重排序的 CC version 列表（来自记录 version 字段）
     record_type_counts: dict = field(default_factory=dict) # {记录 type: 条数}，含 parser 不处理的类型，供漂移雷达
+    edited_paths: list = field(default_factory=list)  # 去重的会话编辑文件绝对路径（本机内匹配用，不出本机）
 
 
 @dataclass

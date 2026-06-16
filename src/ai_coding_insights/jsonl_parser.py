@@ -72,6 +72,7 @@ def parse_session(path) -> ParsedSession:
     plan_mode_count = 0
     skill_names: list = []
     mcp_servers: set = set()        # 用 set 收集，最后转 sorted list
+    edited_paths: set = set()       # 去重收集会话编辑文件路径（本机内匹配用，最后转 sorted list）
     thinking_block_count = 0
     background_task_count = 0
     # 真并行按 message.id 聚合 Agent 数：CC 把同一轮并发的 N 个 Agent 拆成 N 条独立
@@ -168,6 +169,11 @@ def parse_session(path) -> ParsedSession:
                         skill = (inp.get("skill") if isinstance(inp, dict) else None)
                         if isinstance(skill, str) and skill:
                             skill_names.append(skill)
+                    # edited_paths：Edit/Write/MultiEdit/NotebookEdit 写入的文件路径
+                    if name in ("Edit", "Write", "MultiEdit", "NotebookEdit") and isinstance(inp, dict):
+                        fp = inp.get("file_path") or inp.get("notebook_path")
+                        if isinstance(fp, str) and fp:
+                            edited_paths.add(fp)
                     # mcp_servers：从 mcp__<server>__<tool> 解析 server 名
                     # 防御：parts[1] 非空才加入（防畸形工具名如 "mcp__"）
                     if name.startswith("mcp__"):
@@ -223,4 +229,5 @@ def parse_session(path) -> ParsedSession:
         max_parallel_agents=max_parallel_agents,
         parallel_agent_turns=parallel_agent_turns,
         cc_versions=sorted(versions),
-        record_type_counts=record_type_counts)
+        record_type_counts=record_type_counts,
+        edited_paths=sorted(edited_paths))
