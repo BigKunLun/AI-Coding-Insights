@@ -13,7 +13,7 @@ allowed-tools: Bash(uv run *), Bash(date *), Agent, Read, Write
 
 ### 脱敏铁律
 写入画像 / 证据 / 建议 / 小结的**所有自由文本**只描述**行为模式与量级**，**绝不**引用业务内容。原文与业务语义**永不出本机**。
-- **【脱敏字段集】**（下文多处引用此名）：`headline`、`points`、`metrics.label`、`frictions.observation/suggestion`、`evidence.behavior`、`highlights.behavior`。
+- **【脱敏字段集】**（下文多处引用此名）：`headline`、`points`、`metrics.label`、`frictions.observation/suggestion`、`evidence.behavior`、`highlights.behavior`、obs 的 `notable_turns.behavior` 与 `notable_turns.redacted_excerpt`。
 - **【业务词黑名单】**：客户名 / 功能名 / 产品方向 / 架构细节 / 含业务词的文件名。
 - ✓「推翻 AI 一处实现方案并给出更优约束」「累计 N 次提交、落地率 X%」　✗「重构虚拟手环数据服务」「支付通道限流实现」
 
@@ -70,7 +70,8 @@ allowed-tools: Bash(uv run *), Bash(date *), Agent, Read, Write
    "notable_turns":[
      {"pointer":"<该会话 file_path>#<该 turn 的 uuid>","anchors":<该 turn 的 anchors>,
       "kind":"posture 或 friction",
-      "behavior":"<这条真人输入体现的行为模式，一句话（30 字内），行为级脱敏>"}
+      "behavior":"<这条真人输入体现的行为模式，一句话（30 字内），行为级脱敏>",
+      "redacted_excerpt":"<对这条真人输入的『行为级脱敏抓手』，一句话（30 字内），见下『事三』>"}
    ]}
 ]}
 事一·逐条分档（posture_counts）：对该会话【每一条】turn 判一档计数，四档总和必须等于该会话 turns 条数（规则层逐会话校验，不符整批重派）。判据 ＝ 【金标准判据】（此处嵌入 L1-L4 + 防伪主导 + 拿不准就低）。
@@ -78,6 +79,11 @@ allowed-tools: Bash(uv run *), Bash(date *), Agent, Read, Write
 - kind="posture"：有 L3/L4 判定价值（命中 anchors、明显主导/纠错）。
 - kind="friction"：同一问题反复修不收敛、报错贴了又贴、推倒重来、长拉锯无收口、人机互相误解空转。
 看不出行为价值的 turn 直接不选。
+事三·redacted_excerpt（每条 notable_turn 必填，教练专家据此给建议）：对该 turn 真人输入做**行为级改写**得到一句「抓手」——它是教练唯一的真实素材来源（业务原文永不出抽象层，故教练不再回读 batch 原文）。规则：
+- **写「做了什么样的事、用了什么协作动作」**，不复述业务内容。一句话、30 字内（同 behavior 风格），严守【脱敏字段集】与【业务词黑名单】，绝不含客户/功能/产品/架构等业务名词或含业务词的文件名。
+- 它比 behavior 更贴近教练用得上的**协作动作细节**（如「贴报错追问根因后未验证就放行」「连续三轮要 AI 重写同一处、每次只换措辞不加约束」「先要方案评审、列两条边界再放行」），让教练能据此给可照搬的话术/工作流改法，而非空洞结论。
+- ✓「贴日志追问、要 AI 自证后才放行」「推翻方案并补一条性能约束」　✗「修复手环数据同步的报错」「让 AI 重写支付回调」（后两者含业务语义，违规）。
+- 拿不准能否脱敏干净就写得更抽象（宁可丢细节，不可漏业务词）。
 pointer 的 uuid 必须原样取自该 turn 的 uuid，绝不拿 session_id 充当——渲染端逐条核验，伪指针公开标注。
 batch 里【每个会话】都必须在 sessions 里：无可记录 turn 的也列入并令 "notable_turns":[]，posture_counts 每个会话必填（无输入填全零）。
 只回复 Write 成功的确认，不复述内容。
@@ -97,14 +103,14 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights verify-obs --batches
 
 ## 3. 阶段二 · 五专家并行（四维度 + 一教练）
 
-用 **Agent 工具**并行派 **5 个专家**。每个 prompt ＝ **【专家共同纪律】整段** ＋ 下面该专家的【输入 / 产出 / 禁忌】；**证据专家因涉及 L3/L4 判定，还须把【金标准判据】整段嵌入其 prompt**（与共同纪律同级，不可只留一句引用）。每个专家先用 **Read** 读**全部** `<BATCHES_DIR>/obs-*.json` ＋ `<BATCHES_DIR>/_aggregate.json`（需要窗口时再读 `_window.json`）——这两个文件第 1 步已落盘，**不要**重写。**唯有教练专家**可额外用 Read 回读 `<BATCHES_DIR>/batch-NN.json` 以查代表性 turn 的原文（深读真实样本，详见教练条），其余四专家只读 obs/aggregate、无需读原始 batch。
+用 **Agent 工具**并行派 **5 个专家**。每个 prompt ＝ **【专家共同纪律】整段** ＋ 下面该专家的【输入 / 产出 / 禁忌】；**证据专家因涉及 L3/L4 判定，还须把【金标准判据】整段嵌入其 prompt**（与共同纪律同级，不可只留一句引用）。每个专家先用 **Read** 读**全部** `<BATCHES_DIR>/obs-*.json` ＋ `<BATCHES_DIR>/_aggregate.json`（需要窗口时再读 `_window.json`）——这两个文件第 1 步已落盘，**不要**重写。**五专家一律不读 `<BATCHES_DIR>/batch-NN.json` 原文**（业务原文不出抽象层）：教练所需的真实抓手已由 extractor 落在 obs 的 `redacted_excerpt`（脱敏片段）字段，教练据此给建议，详见教练条。
 
 - **证据专家** · 输入：kind="posture" 的 `notable_turns`。产出：`{"evidence":[{"pointer","behavior"}…L3/L4 各 1-2 条], "highlights":[{"pointer","behavior"}…2-3 条，技术具体性最强的最佳 L4 实践]}`。每条 `highlights.behavior` ＝「**认知动作 + 机制依据 + AI 的回应/结果**」，具体到可回忆（如「凭框架机制推翻方案、指出配置应动态注入、AI 采纳重做」）；守【脱敏字段集】铁律——只描述认知动作/技术机制/量级/结果，工程通用概念（如「配置动态注入」）可用，**绝不**含客户/功能/产品语义。禁忌：**不**估姿势占比、**不**返回任何姿势数字（规则层已从 posture_counts 组装）；判据 ＝ **【金标准判据】**（派发时整段嵌入此 prompt，同 extractor）；无可选素材返空数组，不编造。
 - **水平专家** · 输入：`aggregate` 的 `tool_breadth`/`tool_session_counts`/`skill_total_counts`（技能调用次数，频次口径）/`subagent_sessions`/`workflow_sessions`/`mcp_sessions`/`model_counts`，及高阶编排信号 `background_task_count`/`background_sessions`（后台委托）与 `max_parallel_agents`/`parallel_agent_turns`（真并行：单轮并发派出的 Agent 峰值与轮次）。产出：`{"breadth":{"headline":"一句话定调","points":["2-4 条，行为+量级"],"metrics":[{"label":"工具广度","value":<n>},{"label":"SubAgent会话","value":<n>}],"tools":["工具能力短语…"]}}`。`points` 每条 ＝ **一句洞察**（这说明你怎样用 AI：解读 / 对比 / 点张力），按「洞察导语 —— 次级展开 / 枚举」用全角破折号 `——` 分两段；**禁止复述指标卡已有数字**（如「工具广度 43 种」单列数字无解读不算洞察），导语承载结论、展开放佐证枚举。广度叙事**不以「越多越好」为导向**：断层式领先的少数工具/技能＝真实工作流主轴，应点出；长尾低频项可提示「按需保留、可考虑卸载」；但一个都不用可能仍是初级。结合 `tool_session_counts`/`skill_total_counts` 的**头部断层 vs 长尾**分布说话，而非单看 `tool_breadth` 绝对值。禁忌：据信号点出后台委托与真并行水平（共同纪律 7：0 是真值）。
 - **深度专家** · 输入：`notable_turns` 行为 ＋ `aggregate.anchor_counts` ＋ `thinking_block_count`/`thinking_sessions`（深度推理强度硬锚）。产出：`{"depth":{"headline":"..","points":["..带 SO-WHAT.."],"metrics":[{"label":"override","value":<n>},{"label":"轮次/会话","value":".."}]}, "evidence":[{"pointer","behavior"}…]}`。禁忌：metrics 直接取硬指标（override＝`anchor_counts.override`，轮次/会话＝`avg_turns`，不从 notable_turns 自数）；每条 point 挖到「意味什么/该怎么调」，不止「做了什么」，同样按「洞察导语 —— 展开」用全角破折号 `——` 分两段。
 - **成果专家** · 输入：`aggregate` 的 `git_landed_count`（主锚：git 历史硬证据，改动文件命中 AI 编辑的本人提交，文件重叠归属）/`git_commit_total`（窗口内同仓本人提交总数，落地率分母）/`commit_count`（会话内可观测提交）/`dropped_count`（观测到但已不在分支历史）/`edit_count`/`landed_ratio`（落地率 = `git_landed_count` ÷ `git_commit_total`，同口径文件重叠）。产出：`{"outcome":{"headline":"..","points":[".."],"metrics":[{"label":"落地提交","value":<git_landed_count>},{"label":"观测丢弃","value":<dropped_count>}],"landed":<git_landed_count>,"total":<git_commit_total>}}`。`points` 每条 ＝ **一句洞察**（量级背后说明什么、落地节奏的张力在哪），按「洞察导语 —— 次级展开 / 枚举」用全角破折号 `——` 分两段，**禁止复述指标卡已有数字**单列无解读。禁忌：只讲量级与落地节奏；`commit_count`=0 而 `git_landed_count`>0 是**测不到不是没提交**（共同纪律 3），绝不写「无提交收口/落地为零」。
 - **教练 / 诊断专家** · 输入：全部 `notable_turns`（重点 kind="friction"）＋ `aggregate`（含 `friction_stats`：error/override 命中会话数与单会话 top3、轮次最长 top3，为「集中于少数会话」提供确定性分布）。产出：`{"frictions":[{"observation":"..","pointers":["/abs/path.jsonl#uuid"],"suggestion":".."}…1-5 条]}`。禁忌：每条观察写出依据数字（取自 `aggregate`/`friction_stats`/会话 `signals`）；`pointers` 1-3 个从 friction 的 notable_turns 原样拷贝（会话级用 file_path）；建议具体到「什么场景+做什么动作+怎么验证」，禁「建议小步提交」这类对谁都成立的话；**「怎么验证」只引报告已呈现的硬指标**（`error_top_counts`/`override_top_counts`/趋势表密度），不引报告未渲染的内部计数门槛（如「compaction 从 5 条降到 2 条」——报告无此数，用户无法自验）；**至少一条直接服务姿态健康**：偏依赖→如何把引导力（主动给目标/约束/验收判据）提上来；偏对抗（L4>20%）→如何减少无脑推翻、把约束前置到提问环节；健康→如何在保持的同时补足绝对用量向上一成熟度档冲。**不再以「L4 越高越好」为导向。**；工具覆盖盲区不归你管（规则层已渲染）。下面只是常见方向**示例**（宁缺勿滥，优先本窗口最突出、最个性化的模式）：反复返工（`edit_count` 相对 `git_landed_count` 偏高）、error 集中（`friction_stats.error_top_counts` 对照 `error_session_count`/`session_count`）、override 集中于少数会话（`friction_stats.override_top_counts`）、单会话轮次远超 `avg_turns` 且无 commit 收口（仅当 `commit_count`>0 可用）。
-  - **深读真实样本**：除 obs 摘要 + aggregate 外，对你要落建议的 friction/posture `notable_turns`，用 **Read** 回读其 pointer（`file_path#uuid`）指向的会话在 `<BATCHES_DIR>/batch-NN.json` 中的**完整真人输入原文**，基于真实片段而非摘要给建议（原文不出本机，输出仍严格行为级脱敏，守【脱敏字段集】/【业务词黑名单】）。
+  - **凭脱敏片段给建议（不读原文）**：你的真实素材 ＝ obs 里 `notable_turns` 的 `redacted_excerpt`（extractor 已对值得落建议的 turn 产出的『行为级脱敏抓手』）＋ `behavior` 摘要 ＋ `aggregate`。对你要落建议的 friction/posture turn，**基于其 `redacted_excerpt` 抓真实协作动作**给可照搬的建议，**不要**用 Read 回读 `batch-NN.json` 原文——业务原文不出抽象层，脱敏片段就是你唯一的代表性样本。输出仍严格行为级脱敏，守【脱敏字段集】/【业务词黑名单】。
   - **每条建议四段成形**（写进既有 `observation`/`suggestion` 两字段，不新增 schema）：`observation` ＝「现象（带量级）+ 可回看 pointer」；`suggestion` ＝「机制（为什么低效/有风险）→ 可照搬动作（给真实可用的提问话术/工作流改法，而非『更主动』『多沟通』这类对谁都成立的空话）→ 验证（用报告已呈现的哪个硬指标看改善）」。**禁止**只有数字与泛化结论的空洞建议。
 
 ## 4. 阶段三 · 合成 + 渲染
@@ -144,7 +150,7 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights render-profile --plu
 
 把渲染命令 stdout 输出的报告路径告知用户，口头小结（**同守脱敏铁律**）：
 - **取数窗口**（起止 + 天数）+ **取数范围**（`window.mode`＝`all` 明示「个人模式：全部本机会话」，`include` 明示「团队模式」）。
-- **四维画像**：先报**姿态健康态**（健康 / 偏依赖 / 偏对抗 / 放手为主 / 样本不足，取自渲染输出，**不要把 L4 占比高当成褒奖**）与**成熟度档位**（探索期/进阶期/精通期/引领期，看绝对用量硬指标）；四档原始数字仍以渲染命令 stdout 的「姿势分布: …」行为准（规则层组装，不自估）+ 水平/深度/成果 + landed/total。
+- **四维画像**：先报**姿态健康态**与**成熟度档位**——两者均**逐字照搬**渲染命令（`render-profile`）stdout 的对应行，规则层算定，**不得自行重算或解释**：姿态健康态取「`姿态健康态: <值>`」行（值域：健康 / 偏依赖 / 偏对抗 / 放手为主 / 样本不足，**不要把 L4 占比高当成褒奖**），成熟度档位取「`成熟度档位: <值>`」行（值域：探索期/进阶期/精通期/引领期，看绝对用量硬指标）；四档原始数字仍以同一 stdout 的「`姿势分布: …`」行为准（规则层组装，不自估）+ 水平/深度/成果 + landed/total。
 - **摩擦建议 1-2 个要点** + 「较上次进步」（若有同比）+ **本次编排规模**（如「N 个 extractor + 5 个专家」；subagent 的 token 用量拿不到，不报数、不编造）。
 
 追加提醒（命中才加）：
