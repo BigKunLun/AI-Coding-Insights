@@ -253,7 +253,7 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
     plan_mode_sessions = sum(1 for s in sessions if s.plan_mode_count > 0)
     plan_mode_count = sum(s.plan_mode_count for s in sessions)
 
-    # -- skill / MCP 频次聚合 --
+    # -- skill 会话覆盖（skill_counts=使用会话数）+ 调用频次（skill_total_counts=调用次数）/ MCP 聚合 --
     skill_counts: dict = {}
     for s in sessions:
         for sk in s.skill_names:
