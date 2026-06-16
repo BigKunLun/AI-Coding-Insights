@@ -56,6 +56,7 @@ class ParsedSession:
     option_pick_count: int = 0      # AskUserQuestion 已答题数（每题=1 个决策点）
     plan_mode_count: int = 0        # plan 信号次数：EnterPlanMode/ExitPlanMode tool_use 与 permission-mode:plan 记录之并集
     skill_names: list = field(default_factory=list)   # 去重 skill 名列表（从 Skill tool_use.input.skill 提取）
+    skill_invoke_counts: dict = field(default_factory=dict)  # {skill: 本会话调用次数}（不去重，频次口径）
     mcp_servers: list = field(default_factory=list)    # 去重 MCP server 名列表（从 mcp__<server>__<tool> 解析）
     thinking_block_count: int = 0   # assistant content 里 type=="thinking" 的块数（深度推理强度）
     background_task_count: int = 0  # 带 run_in_background:true 的 tool_use 数（后台委托）

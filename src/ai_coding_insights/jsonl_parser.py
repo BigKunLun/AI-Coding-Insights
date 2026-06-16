@@ -71,6 +71,7 @@ def parse_session(path) -> ParsedSession:
     option_pick_count = 0
     plan_mode_count = 0
     skill_names: list = []
+    skill_invoke_counts: dict = {}
     mcp_servers: set = set()        # 用 set 收集，最后转 sorted list
     edited_paths: set = set()       # 去重收集会话编辑文件路径（本机内匹配用，最后转 sorted list）
     thinking_block_count = 0
@@ -169,6 +170,7 @@ def parse_session(path) -> ParsedSession:
                         skill = (inp.get("skill") if isinstance(inp, dict) else None)
                         if isinstance(skill, str) and skill:
                             skill_names.append(skill)
+                            skill_invoke_counts[skill] = skill_invoke_counts.get(skill, 0) + 1
                     # edited_paths：Edit/Write/MultiEdit/NotebookEdit 写入的文件路径
                     if name in ("Edit", "Write", "MultiEdit", "NotebookEdit") and isinstance(inp, dict):
                         fp = inp.get("file_path") or inp.get("notebook_path")
@@ -223,6 +225,7 @@ def parse_session(path) -> ParsedSession:
         option_pick_count=option_pick_count,
         plan_mode_count=plan_mode_count,
         skill_names=sorted(set(skill_names)),
+        skill_invoke_counts=skill_invoke_counts,
         mcp_servers=sorted(mcp_servers),
         thinking_block_count=thinking_block_count,
         background_task_count=background_task_count,

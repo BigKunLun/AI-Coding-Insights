@@ -350,3 +350,18 @@ def test_parse_session_collects_edited_paths(tmp_path):
     s = parse_session(p)
     assert set(s.edited_paths) == {"/repo/src/a.py", "/repo/src/b.py", "/repo/nb.ipynb"}
     assert len(s.edited_paths) == 3   # a.py 两次工具仍去重
+
+
+def test_parse_session_skill_invoke_counts(tmp_path):
+    lines = [
+        {"type":"user","sessionId":"s3","cwd":"/r","uuid":"u","timestamp":"2026-06-01T00:00:00Z",
+         "message":{"content":"go"}},
+        {"type":"assistant","timestamp":"2026-06-01T00:01:00Z","message":{"model":"m","content":[
+            {"type":"tool_use","name":"Skill","input":{"skill":"openspec"}},
+            {"type":"tool_use","name":"Skill","input":{"skill":"openspec"}},
+            {"type":"tool_use","name":"Skill","input":{"skill":"commit"}}]}},
+    ]
+    p = tmp_path / "s3.jsonl"; p.write_text("\n".join(json.dumps(x) for x in lines))
+    s = parse_session(p)
+    assert s.skill_invoke_counts == {"openspec": 2, "commit": 1}   # 调用次数，不去重
+    assert set(s.skill_names) == {"openspec", "commit"}            # 去重列表仍在
