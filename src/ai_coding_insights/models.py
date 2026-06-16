@@ -146,6 +146,7 @@ class AggregateMetrics:
     claude_md_sessions: int = 0     # 编辑过 CLAUDE.md 的会话数
     max_concurrent_sessions: int = 1  # 窗口内最大并发会话数（≥300s 重叠）
     skill_counts: dict = field(default_factory=dict)       # {skill_name: 使用会话数}
+    skill_total_counts: dict = field(default_factory=dict)  # {skill: 跨会话调用总次数}（频次口径）
     mcp_server_counts: dict = field(default_factory=dict)  # {server_name: 使用会话数}
     daily: list = field(default_factory=list)  # [{date, session_count, human_input_count, commit_count, landed_count, edit_count, token_total}]
     custom_skill_count: int = 0        # 用户自建 skill 文件数（来自文件系统扫描，非 transcript）

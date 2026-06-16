@@ -248,6 +248,21 @@ def test_aggregate_advanced_signals():
     assert m.parallel_agent_turns == 1       # 1 + 0 + 0
 
 
+def test_aggregate_skill_total_counts_vs_session_counts():
+    s1 = _session("s1", "/r", [], [], "2026-06-01T10:00:00Z", ["x"])
+    s1.skill_names = ["openspec"]
+    s1.skill_invoke_counts = {"openspec": 2}
+    s2 = _session("s2", "/r", [], [], "2026-06-02T10:00:00Z", ["x"])
+    s2.skill_names = ["openspec", "commit"]
+    s2.skill_invoke_counts = {"openspec": 3, "commit": 1}
+    stats = [SessionStats("s1", "/r", 1, 0.0, 60.0, [], []),
+             SessionStats("s2", "/r", 1, 0.0, 60.0, [], [])]
+    outcomes = [OutcomeStats("s1", "/r", 0, 0, 0), OutcomeStats("s2", "/r", 0, 0, 0)]
+    agg = aggregate_metrics([s1, s2], stats, outcomes)
+    assert agg.skill_total_counts == {"openspec": 5, "commit": 1}   # 调用次数
+    assert agg.skill_counts == {"openspec": 2, "commit": 1}          # 使用会话数（不变）
+
+
 def test_aggregate_advanced_signals_empty():
     m = aggregate_metrics([], [], [])
     assert m.thinking_block_count == 0

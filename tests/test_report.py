@@ -169,3 +169,17 @@ def test_report_shows_commit_total():
     html = render_profile_report(profile, {"included_projects":[],"session_count":10,
         "generated_at":"2026-06-15T00:00:00Z"}, metrics=metrics)
     assert "提交总数" in html
+
+
+def test_report_skill_frequency_uses_total_counts():
+    from ai_coding_insights.report import render_profile_report
+    profile = {"posture_distribution":{"L1":0.3,"L2":0.3,"L3":0.3,"L4":0.1},
+        "breadth":{"headline":"x"},"depth":{"headline":"y"},
+        "outcome":{"headline":"z","landed":1,"total":2},"frictions":[],
+        "evidence":[{"behavior":"b","pointer":"/p.jsonl#u"}]}
+    metrics = {"tool_breadth":5,"turn_p90":10,"active_days":3,"human_input_count":50,
+        "decision_point_count":40,"git_landed_count":1,"git_commit_total":2,"landed_ratio":0.5,
+        "skill_total_counts":{"openspec":50},"skill_counts":{"openspec":6}}
+    html = render_profile_report(profile, {"included_projects":[],"session_count":6,
+        "generated_at":"2026-06-15T00:00:00Z"}, metrics=metrics)
+    assert "50" in html and "openspec" in html   # 频次区体现调用次数 50，而非会话数 6

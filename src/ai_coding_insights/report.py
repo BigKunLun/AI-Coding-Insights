@@ -260,7 +260,7 @@ def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
 
     sections = ""
     sections += _bar_section(tool_session_counts or {}, "高频工具 Top 10", top_n=10)
-    sections += _bar_section(skill_counts or {}, "技能频次 Top 8", top_n=8)
+    sections += _bar_section(skill_counts or {}, "技能频次 Top 8（调用次数）", top_n=8)
     sections += _bar_section(mcp_server_counts or {}, "MCP Server Top 8", top_n=8)
     return sections
 
@@ -994,7 +994,7 @@ def render_profile_report(profile: dict, meta: dict,
     # ---- 附录（不编号）----
     token_block = _render_token_details(m.get("token_usage"), m.get("token_total"))
     tsm_appendix = _render_tool_skill_mcp_appendix(
-        m.get("tool_session_counts"), m.get("skill_counts"), m.get("mcp_server_counts"))
+        m.get("tool_session_counts"), m.get("skill_total_counts"), m.get("mcp_server_counts"))
     appendix = (
         '<div class="sec"><span class="sec-num" style="color:#667085">附录</span>'
         '<span class="sec-title">明细数据</span>'

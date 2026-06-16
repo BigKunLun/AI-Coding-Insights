@@ -258,6 +258,10 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
     for s in sessions:
         for sk in s.skill_names:
             skill_counts[sk] = skill_counts.get(sk, 0) + 1
+    skill_total_counts: dict = {}
+    for s in sessions:
+        for sk, c in (s.skill_invoke_counts or {}).items():
+            skill_total_counts[sk] = skill_total_counts.get(sk, 0) + c
     mcp_server_counts: dict = {}
     for s in sessions:
         for sv in s.mcp_servers:
@@ -306,6 +310,7 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
         plan_mode_sessions=plan_mode_sessions,
         plan_mode_count=plan_mode_count,
         skill_counts=skill_counts,
+        skill_total_counts=skill_total_counts,
         mcp_server_counts=mcp_server_counts,
         daily=daily,
         max_concurrent_sessions=max_concurrent_sessions,
