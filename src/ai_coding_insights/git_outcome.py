@@ -2,7 +2,8 @@
 
 口径（文件重叠，时间无关，只出整数计数）：
 - 提交来源 = `git log`（HEAD 祖先——与 outcome.verify_sha_in_history 的 landed
-  语义一致），author 限本机 `git config user.email`，`--no-merges`；取不到 email、
+  语义一致），author 限本机 `git config user.email`（输出 %ae 在 Python 端按大小写
+  折叠精确相等过滤，不用 git 子串匹配的 --author），`--no-merges`；取不到 email、
   非 git 仓库、子进程异常一律 fail-safe 零采集（宁漏勿误）。
 - 归属 = 提交改动文件集与会话编辑集（ParsedSession.edited_paths）求交，有交集即落地；
   total = 窗口内本人提交总数（落地率分母，同口径）。与时间窗无关。
@@ -64,21 +65,28 @@ def window_commit_file_sets(cwd: str, since: datetime) -> list:
     email = (_run_git(cwd, "config", "user.email") or "").strip()
     if not email:
         return []
+    me = email.casefold()
+    # git 的 --author 是正则子串匹配，会把 notme@x.com（子串）、me@x.com.ci（bot 后缀）
+    # 等他人提交误算成本人，污染分母/分子（违反「本人提交」「宁漏勿误」）。
+    # 故不传 --author，改为输出每提交的 author email（%ae），在 Python 端按
+    # 大小写折叠精确相等过滤——最贴合「本人提交」语义，且规避不同 git 版本的正则方言差异。
+    # 提交分隔符 \x01；提交头行格式为 "\x01<author-email>"，再跟 --name-only 文件行。
     out = _run_git(cwd, "-c", "core.quotepath=false", "log",
                    f"--since={since.isoformat()}",
-                   f"--author={email}", "--no-merges", "--name-only",
-                   "--pretty=format:%x01")
+                   "--no-merges", "--name-only",
+                   "--pretty=format:%x01%ae")
     if out is None:
         return []
-    sets, cur = [], None
+    sets, cur, keep = [], None, False
     for line in out.splitlines():
         if line.startswith("\x01"):
-            if cur is not None:
+            if cur is not None and keep:
                 sets.append(cur)
             cur = set()
-        elif cur is not None and line.strip():
+            keep = line[1:].strip().casefold() == me
+        elif cur is not None and keep and line.strip():
             cur.add(line.strip())
-    if cur is not None:
+    if cur is not None and keep:
         sets.append(cur)
     return sets
 

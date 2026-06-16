@@ -65,6 +65,34 @@ def test_repo_outcome_excludes_other_author(repo):
     assert r == RepoOutcome(landed_count=1, total_count=1)   # 只本人那条提交计入
 
 
+def test_repo_outcome_excludes_substring_and_suffix_authors(repo):
+    # git --author 是正则子串匹配：本机 me@x.com 会误匹配 notme@x.com（子串）
+    # 与 me@x.com.ci（bot 后缀）。精确（大小写折叠）相等过滤后，二者都不得计入。
+    root = repo_root(str(repo))
+    (repo / "a.py").write_text("1"); _git(repo, "add", "a.py")
+    _git(repo, "-c", "user.email=me@x.com", "-c", "user.name=me", "commit", "-m", "mine")
+    (repo / "b.py").write_text("1"); _git(repo, "add", "b.py")
+    _git(repo, "-c", "user.email=notme@x.com", "-c", "user.name=notme", "commit", "-m", "substr")
+    (repo / "c.py").write_text("1"); _git(repo, "add", "c.py")
+    _git(repo, "-c", "user.email=me@x.com.ci", "-c", "user.name=bot", "commit", "-m", "suffix")
+    _git(repo, "config", "user.email", "me@x.com")
+    since = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    # a.py 是本人编辑过的文件；notme/bot 各自动了 b.py/c.py 也不得污染分母/分子。
+    r = repo_outcome(root, {root + "/a.py"}, since)
+    assert r == RepoOutcome(landed_count=1, total_count=1)   # 只本人那条提交计入
+
+
+def test_repo_outcome_author_case_insensitive(repo):
+    # 邮箱大小写折叠相等：Me@X.com 提交在本机 user.email=me@x.com 下应计入。
+    root = repo_root(str(repo))
+    (repo / "a.py").write_text("1"); _git(repo, "add", "a.py")
+    _git(repo, "-c", "user.email=Me@X.com", "-c", "user.name=me", "commit", "-m", "mine")
+    _git(repo, "config", "user.email", "me@x.com")
+    since = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    r = repo_outcome(root, {root + "/a.py"}, since)
+    assert r == RepoOutcome(landed_count=1, total_count=1)
+
+
 def test_repo_root_subdir_and_failsafe(repo, tmp_path):
     import os
     sub = repo / "pkg" / "mod"; sub.mkdir(parents=True)
