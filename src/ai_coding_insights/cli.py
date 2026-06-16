@@ -7,7 +7,6 @@ from .discovery import discover_sessions, detect_data_start, is_window_truncated
 from .signals import compute_stats, aggregate_metrics
 from .outcome import compute_outcome
 from .git_outcome import repo_outcome, repo_root
-from .timeutil import parse_timestamp
 from .profile_input import build_session_input
 from .batch import make_batches
 from .customization import scan_custom_skills, detect_hook_config, compute_customization_signals
@@ -159,21 +158,20 @@ def _emit_batches(args, cfg, now, since) -> int:
     outcomes = [compute_outcome(s) for s in sessions]
     sessions_input = [build_session_input(se, st, oc)
                       for se, st, oc in zip(sessions, stats, outcomes)]
-    # git 主锚采集：按仓库根归并会话时间窗（同仓多 cwd 防双计），窗口起点对齐取数窗口。
+    # git 主锚采集：按仓库根归并会话编辑文件集（同仓多 cwd 防双计），提交按文件重叠归属，
+    # 窗口起点对齐取数窗口。文件名只在本机内求交，不进任何中间产物。
     since_dt = (datetime.combine(since_date, datetime.min.time(), tzinfo=timezone.utc)
                 if since_date else now - timedelta(days=days))
     roots: dict = {}
-    spans_by_root: dict = {}
+    edited_by_root: dict = {}
     for s in sessions:
-        a, b = parse_timestamp(s.first_ts), parse_timestamp(s.last_ts)
-        if not (a and b):
-            continue
         if s.cwd not in roots:
             roots[s.cwd] = repo_root(s.cwd)
-        if roots[s.cwd]:
-            spans_by_root.setdefault(roots[s.cwd], []).append((a, b))
-    repo_outcomes = {root: repo_outcome(root, spans, since_dt)
-                     for root, spans in spans_by_root.items()}
+        root = roots[s.cwd]
+        if root:
+            edited_by_root.setdefault(root, set()).update(s.edited_paths)
+    repo_outcomes = {root: repo_outcome(root, edited, since_dt)
+                     for root, edited in edited_by_root.items()}
 
     # -- customization 信号扫描 --
     custom_skills = scan_custom_skills()

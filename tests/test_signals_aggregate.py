@@ -193,15 +193,15 @@ def test_aggregate_includes_trend():
 def test_aggregate_metrics_repo_outcomes():
     from ai_coding_insights.models import RepoOutcome
     m = aggregate_metrics([], [], [], repo_outcomes={
-        "/r1": RepoOutcome(landed_count=3, outside_count=1),
-        "/r2": RepoOutcome(landed_count=2, outside_count=0)})
+        "/r1": RepoOutcome(landed_count=3, total_count=4),
+        "/r2": RepoOutcome(landed_count=2, total_count=2)})
     assert m.git_landed_count == 5
-    assert m.git_outside_count == 1
+    assert m.git_commit_total == 6
 
 
 def test_aggregate_metrics_repo_outcomes_default_zero():
     m = aggregate_metrics([], [], [])
-    assert m.git_landed_count == 0 and m.git_outside_count == 0
+    assert m.git_landed_count == 0 and m.git_commit_total == 0
 
 
 def test_aggregate_friction_stats_concentration():

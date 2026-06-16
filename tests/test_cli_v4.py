@@ -331,7 +331,7 @@ def test_emit_batches_aggregate_has_git_anchor_keys(tmp_path, capsys):
                "--emit-batches", str(emit), "--snapshot-dir", str(tmp_path / "snap")])
     assert rc == 0
     agg = json.loads((emit / "_aggregate.json").read_text(encoding="utf-8"))
-    for key in ("git_landed_count", "git_outside_count", "dropped_count", "landed_ratio"):
+    for key in ("git_landed_count", "git_commit_total", "dropped_count", "landed_ratio"):
         assert key in agg
     assert agg["git_landed_count"] == 0
 

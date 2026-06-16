@@ -32,9 +32,9 @@ class CommitRef:
 
 @dataclass(frozen=True)
 class RepoOutcome:
-    """单仓库窗口级 git 成果（git log × 会话时间窗细口径归属，见 git_outcome.py）。"""
-    landed_count: int     # 落入某会话时间窗(±宽限)的本人提交数（HEAD 祖先=已落地硬证据）
-    outside_count: int    # 窗口内本人提交但在所有会话窗之外（仅参考，不进任何比率）
+    """单仓库窗口级 git 成果（文件重叠归属，见 git_outcome.py）。"""
+    landed_count: int   # 改动文件与会话编辑集有交集的本人提交数（落地硬证据）
+    total_count: int    # 窗口内该仓本人提交总数（成果体量；落地率分母，同口径）
 
 
 @dataclass
@@ -137,7 +137,7 @@ class AggregateMetrics:
     option_pick_count: int = 0      # 窗口内 AskUserQuestion 已答题总数（L2 硬锚分子）
     decision_point_count: int = 0   # = human_input_count + option_pick_count（姿势分布分母）
     git_landed_count: int = 0       # git 主锚：窗口内本人提交 × 会话窗归属（与奖励挂钩）
-    git_outside_count: int = 0      # 窗口内本人提交但在会话窗外（参考）
+    git_commit_total: int = 0       # 窗口内同仓本人提交总数（落地率分母）
     friction_stats: dict = field(default_factory=dict)  # error/override 会话集中度 + 轮次 top（纯数字，无业务语义，供教练专家个性化判摩擦）
     plan_mode_sessions: int = 0     # 使用过 EnterPlanMode/ExitPlanMode 的会话数
     plan_mode_count: int = 0        # 跨会话 EnterPlanMode 总次数
@@ -164,13 +164,5 @@ class AggregateMetrics:
 
     @property
     def landed_ratio(self) -> float:
-        # 已知证据下的落地率：git 主锚落地 /（落地 + 已知丢弃）。口径为契约钦定
-        # （CLAUDE.md/SKILL：total = git_landed_count + dropped_count）。
-        # ⚠ 混合口径估计器，偏乐观：分子 git_landed_count 是 git 锚口径（全 author 提交按
-        # 窗口归属），分母的 dropped 来自 transcript 观测（仅见部分提交，本机实测约 15%）。
-        # 两 population 不对等，transcript 系统性低估丢弃 → 该比率偏高，应读作「可核账落地
-        # 中的存活率估计」而非精确落地率。
-        # transcript 不可观测（commit_count=0，如旧版 CC 无 gitOperation 回执）时
-        # dropped 未知按 0 计——有 git 落地即 1.0，无任何证据为 0.0。
-        denom = self.git_landed_count + self.dropped_count
-        return self.git_landed_count / denom if denom else 0.0
+        # 同口径落地率：文件重叠落地 / 窗口同仓本人提交总数。分母 0 → 0.0。
+        return self.git_landed_count / self.git_commit_total if self.git_commit_total else 0.0

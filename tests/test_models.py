@@ -27,10 +27,10 @@ def test_outcome_landed_ratio():
     assert OutcomeStats("s","/r",0,0,0).landed_ratio == 0.0
 
 
-def test_repo_outcome_fields():
+def test_repo_outcome_landed_total():
     from ai_coding_insights.models import RepoOutcome
-    r = RepoOutcome(landed_count=3, outside_count=2)
-    assert r.landed_count == 3 and r.outside_count == 2
+    r = RepoOutcome(landed_count=3, total_count=5)
+    assert r.landed_count == 3 and r.total_count == 5
 
 
 def _agg(**kw):
@@ -44,20 +44,13 @@ def _agg(**kw):
     return AggregateMetrics(**base)
 
 
-def test_aggregate_landed_ratio_git_anchor():
-    # 双源可观测：git 落地 8，transcript 观测 10 中 7 存活 → 丢弃 3 → 8/11
-    m = _agg(commit_count=10, landed_count=7, git_landed_count=8, git_outside_count=2)
+def test_aggregate_landed_ratio_same_caliber():
+    # 同口径落地率：文件重叠落地 / 窗口同仓本人提交总数。
+    assert abs(_agg(git_landed_count=3, git_commit_total=4).landed_ratio - 0.75) < 1e-9
+    assert _agg(git_landed_count=0, git_commit_total=0).landed_ratio == 0.0
+
+
+def test_aggregate_dropped_count_independent():
+    # dropped_count 仍是独立观测信号（不再喂 landed_ratio）。
+    m = _agg(commit_count=10, landed_count=7)
     assert m.dropped_count == 3
-    assert abs(m.landed_ratio - 8 / 11) < 1e-9
-
-
-def test_aggregate_landed_ratio_transcript_blind():
-    # transcript 不可观测（旧版 CC）：丢弃未知=0，git 有落地 → 1.0
-    m = _agg(commit_count=0, landed_count=0, git_landed_count=5)
-    assert m.dropped_count == 0
-    assert m.landed_ratio == 1.0
-
-
-def test_aggregate_landed_ratio_no_evidence():
-    m = _agg()
-    assert m.landed_ratio == 0.0

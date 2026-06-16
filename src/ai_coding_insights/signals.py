@@ -191,7 +191,7 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
     landed_count = sum(o.landed_count for o in outcomes)
     edit_count = sum(o.edit_count for o in outcomes)
     git_landed_count = sum(r.landed_count for r in (repo_outcomes or {}).values())
-    git_outside_count = sum(r.outside_count for r in (repo_outcomes or {}).values())
+    git_commit_total = sum(r.total_count for r in (repo_outcomes or {}).values())
 
     durations = [st.duration_seconds for st in stats
                  if st.duration_seconds is not None
@@ -301,7 +301,7 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
         option_pick_count=option_pick_count,
         decision_point_count=decision_point_count,
         git_landed_count=git_landed_count,
-        git_outside_count=git_outside_count,
+        git_commit_total=git_commit_total,
         friction_stats=friction_stats,
         plan_mode_sessions=plan_mode_sessions,
         plan_mode_count=plan_mode_count,
