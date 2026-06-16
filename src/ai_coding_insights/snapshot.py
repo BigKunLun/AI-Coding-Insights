@@ -5,7 +5,7 @@ from pathlib import Path
 DEFAULT_SNAPSHOT_DIR = Path.home() / ".ai-coding-insights" / "snapshots"
 
 _CORE_KEYS = ["landed_ratio", "commit_count", "landed_count",
-              "git_landed_count", "dropped_count", "edit_count",
+              "git_landed_count", "git_commit_total", "dropped_count", "edit_count",
               "session_count", "human_input_count", "tool_breadth", "active_days",
               "token_total", "subagent_sessions", "workflow_sessions", "mcp_sessions",
               "duration_median_min"]

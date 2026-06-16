@@ -648,6 +648,9 @@ def render_profile_report(profile: dict, meta: dict,
     # 新语义：landed=git 落地、total=落地+观测丢弃）。
     git_landed = mval("git_landed_count",
                       mval("landed_count", o_landed if o_total else None))
+    # 落地率分母：窗口内同仓本人提交总数（与 git_landed 同口径）。
+    _gct = mval("git_commit_total")
+    git_commit_total = None if _gct is None else int(_gct)
     _cc, _lc = mval("commit_count"), mval("landed_count")
 
     def _dropped_fallback():
@@ -707,6 +710,8 @@ def render_profile_report(profile: dict, meta: dict,
         ("产出落地", "#0d9488", "#0f766e", [
             ("落地提交", num(None if git_landed is None else int(git_landed)),
              diff_html("git_landed_count")),
+            ("提交总数", num(git_commit_total),
+             diff_html("git_commit_total")),
             ("观测丢弃", num(None if dropped is None else int(dropped)),
              diff_html("dropped_count")),
             ("编辑数", num(edit_count), diff_html("edit_count")),
@@ -852,7 +857,9 @@ def render_profile_report(profile: dict, meta: dict,
         + _dim_card("成果", "成果 · 落地", outcome,
                     extra_rows=(f'<div class="pt-row pt-last"><div class="pt-line">'
                                 f'{_hl_nums(f"落地 {landed_disp} · 观测丢弃 {dropped_disp}", _DIM_COLORS["成果"])}'
-                                f'</div></div>'))
+                                f'</div></div>'
+                                '<div class="fine-note">落地率 = 改动文件命中 AI 编辑的提交'
+                                ' ÷ 窗口同仓本人提交总数（同口径）。</div>'))
         + '</div>'
         + _depth_card(depth)
     )
@@ -917,6 +924,7 @@ def render_profile_report(profile: dict, meta: dict,
         diff_note = "首次基线，暂无同比"
     else:
         labels = {"landed_ratio": "落地率", "git_landed_count": "落地提交",
+                  "git_commit_total": "提交总数",
                   "dropped_count": "观测丢弃", "commit_count": "会话内提交",
                   "edit_count": "编辑数", "session_count": "会话数",
                   "human_input_count": "有效输入", "tool_breadth": "工具广度",

@@ -156,3 +156,16 @@ def test_report_posture_reason_not_double_escaped():
                                  metrics=metrics)
     assert "偏依赖" in html
     assert "&amp;lt;" not in html   # reason 里的 < 只能单次转义为 &lt;
+
+
+def test_report_shows_commit_total():
+    from ai_coding_insights.report import render_profile_report
+    profile = {"posture_distribution": {"L1":0.2,"L2":0.25,"L3":0.4,"L4":0.15},
+        "breadth": {"headline":"x"}, "depth": {"headline":"y"},
+        "outcome": {"headline":"z","landed":6,"total":10}, "frictions": [],
+        "evidence": [{"behavior":"b","pointer":"/p.jsonl#u"}]}
+    metrics = {"tool_breadth":12,"turn_p90":20,"active_days":14,"human_input_count":400,
+        "decision_point_count":100,"git_landed_count":6,"git_commit_total":10,"landed_ratio":0.6}
+    html = render_profile_report(profile, {"included_projects":[],"session_count":10,
+        "generated_at":"2026-06-15T00:00:00Z"}, metrics=metrics)
+    assert "提交总数" in html

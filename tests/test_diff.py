@@ -5,6 +5,7 @@ CURRENT = {
     "commit_count": 46,
     "landed_count": 37,
     "git_landed_count": 41,
+    "git_commit_total": 52,
     "dropped_count": 9,
     "edit_count": 886,
     "session_count": 107,
@@ -22,6 +23,7 @@ PREVIOUS = {
     "commit_count": 40,
     "landed_count": 37,       # 相等 → "→"
     "git_landed_count": 35,
+    "git_commit_total": 48,
     "dropped_count": 3,
     "edit_count": 900,        # 下降 → "↓"
     "session_count": 100,
