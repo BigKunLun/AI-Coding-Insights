@@ -11,7 +11,7 @@ import json
 import math
 
 from ai_coding_insights.calibrate import (
-    DIR_CEILING, DIR_FLOOR, DIR_SCALE, DIR_TEXT,
+    DIR_CEILING, DIR_FLOOR, DIR_SCALE,
     MIN_PERCENTILE_SAMPLES, MIN_RELIABLE_SAMPLES,
     _fmt, calibrate, describe, extract_series, format_report, locate_threshold,
     percentile, read_percentile, sample_caveat, threshold_specs,
@@ -309,7 +309,7 @@ def test_threshold_specs_雷达打满线也进清单():
 
 def test_threshold_specs_每条阈值都标方向():
     for s in threshold_specs(DEFAULT_STAGE_THRESHOLDS, DEFAULT_POSTURE_BANDS):
-        assert s["direction"] in (DIR_FLOOR, DIR_CEILING, DIR_SCALE, DIR_TEXT), s["name"]
+        assert s["direction"] in (DIR_FLOOR, DIR_CEILING, DIR_SCALE), s["name"]
 
 
 def test_threshold_specs_成熟度闸门全是下限门():
@@ -326,60 +326,6 @@ def test_threshold_specs_姿态带里只有l4上限是上限门():
     assert specs["l4_healthy_ceiling"]["direction"] == DIR_CEILING
     for name in ("min_decision_points", "guide_floor", "min_handsoff_plan_sessions"):
         assert specs[name]["direction"] == DIR_FLOOR, name
-
-
-# ---------- 空转旋钮：只改文案、不改判定的阈值必须被单独标出 ----------
-
-def test_stage_的两条健康下沿对判定完全无影响():
-    """真相源侧的事实钉子：`l3_healthy_floor` / `l4_healthy_floor` 不改变 state。
-
-    `diagnose_posture` 过了 ceiling 与 guide_floor 之后，两条分支都 `return 健康`，
-    这两个阈值只决定 reason 措辞。calibrate 因此把它们标成 DIR_TEXT。
-    哪天有人让它们真的分档，这条测试会红——那时必须回 calibrate 把方向改回 DIR_FLOOR，
-    否则表里会挂着一条「不起作用」的假说明。两侧靠这条测试锁在一起。
-    """
-    from ai_coding_insights.stage import PostureBands, diagnose_posture
-
-    极高 = PostureBands(l3_healthy_floor=0.99, l4_healthy_floor=0.99)
-    极低 = PostureBands(l3_healthy_floor=0.0, l4_healthy_floor=0.0)
-    样本 = [({"L1": 0.40, "L2": 0.35, "L3": 0.05, "L4": 0.20}, 100),
-          ({"L1": 0.10, "L2": 0.10, "L3": 0.70, "L4": 0.10}, 60),
-          ({"L1": 0.30, "L2": 0.20, "L3": 0.50, "L4": 0.00}, 30)]
-    for pd, dp in 样本:
-        默认 = diagnose_posture(pd, dp)["state"]
-        assert diagnose_posture(pd, dp, bands=极高)["state"] == 默认, pd
-        assert diagnose_posture(pd, dp, bands=极低)["state"] == 默认, pd
-
-
-def test_threshold_specs_空转旋钮标为文案参数而非下限门():
-    """把「不起作用的旋钮」混在真门里，比方向写反更难被发现：照着调了，输出一个字不变。"""
-    specs = {s["name"]: s for s in threshold_specs(DEFAULT_STAGE_THRESHOLDS,
-                                                   DEFAULT_POSTURE_BANDS)}
-    for name in ("l3_healthy_floor", "l4_healthy_floor"):
-        assert specs[name]["direction"] == DIR_TEXT, name
-        assert specs[name]["note"], f"{name} 必须写明它只影响文案"
-        assert "文案" in specs[name]["note"] or "措辞" in specs[name]["note"]
-
-
-def test_read_percentile_文案参数不给过门读法():
-    for p in (0.0, 0.5, 1.0):
-        txt = read_percentile(DIR_TEXT, p)
-        assert txt
-        assert "过门" not in txt and "形同虚设" not in txt and "超过上限" not in txt
-        assert "不改变" in txt or "不影响" in txt
-
-
-def test_format_report_文案参数不与真门共用一套读法():
-    snaps = [_snap(posture={"L1": 0.4, "L2": 0.2, "L3": 0.3, "L4": 0.1},
-                   generated_at=f"2026-06-{i + 1:02d}T00:00:00+00:00")
-             for i in range(MIN_RELIABLE_SAMPLES)]
-    text = format_report(calibrate(snaps))
-    row = _thr_row(text, "l3_healthy_floor")
-    assert "下限门" not in row and "过门" not in row
-    assert "文案参数" in row
-    # 图例也要单列一条，否则读者仍会套「过门/未过门」那套图例去读它
-    图例 = "\n".join(_section(text, "== 当前阈值定位 ==").splitlines()[0:6])
-    assert "文案参数" in 图例
 
 
 def test_threshold_specs_雷达打满线是刻度不是门():

@@ -27,7 +27,7 @@ uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-co
 - `render-profile` —— 渲染最终画像 HTML 报告。
 - `auto-scan` —— `SessionEnd` hook 后台自动评估（接线在 `hooks/hooks.json`；自带 lock 防重入 + 滚动日志，失败对用户静默）。
 - `reset` —— 清空本机可再生产物（`snapshots/` / `reports/` / `run/` / `auto-scan.log`）解除 30 天增量窗口闸门，**并把今日写进 `.auto-scan.lock`**（而非删它），压住 `SessionEnd` 的 auto-scan 当天抢先写新快照重新武装闸门——这是「reset 后重跑仍 too_soon」的根因修复。按白名单删、`--dry-run` 只预览，永不碰 `config.toml` 与会话原文。slash 入口 `commands/reset.md`。
-- `calibrate` —— 手动调试命令：读本机 `snapshots/` 里已脱敏的历史标量，给出各指标分布与当前阈值的分位定位。**不进 SKILL.md 编排、不产 HTML、不碰会话原文/batch/obs/git**；只给本机单人历史分布，不是人群分位，样本不足时逐层挂 caveat 而非静默给数。
+- `calibrate` —— 手动调试命令：给出各指标分布与当前阈值的分位定位，**不进 SKILL.md 编排、不产 HTML**。两种取数来源：默认读 `snapshots/` 里已脱敏的历史标量；`--replay` 则把本机会话按等长窗口切片重放成伪快照（`--replay-window` 默认对齐 `WINDOW_FLOOR_DAYS`，`--replay-step` 可滑动）。**回放存在的理由**：窗口闸门是「不足 30 天即 too_soon」，快照最快 30 天落一个，攒 20 个要 1.6 年——靠等快照校准阈值走不通，而档位闸门用的全是规则层硬指标，可直接从既有会话按同口径重算。**切片长度必须与评估窗口同口径**，改小即跨口径（阈值是按「一个 30 天窗口内的量级」定的）。回放不跑 git log、不跑 LLM，git 三键与姿态四档整键不放进伪快照（未测量 ≠ 0）。只给本机单人分布，不是人群分位；样本不足时逐层挂 caveat，且 n < 5 时压住「过门/未过门」的定性读法，只给数字。
 
 ## 架构原则
 

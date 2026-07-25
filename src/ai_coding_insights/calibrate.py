@@ -18,15 +18,21 @@
 输出里只有指标名与数字，不含任何项目名或路径。
 """
 
+from datetime import date, timedelta
+
 from .snapshot import (CURRENT_POSTURE_RUBRIC, _CALIBER_SENSITIVE_KEYS,
                        _CORE_KEYS)
 from .stage import (DEFAULT_POSTURE_BANDS, DEFAULT_STAGE_THRESHOLDS,
                     PostureBands, StageThresholds, normalize_posture)
 from .view_model import RADAR_BREADTH_FULL, RADAR_DEPTH_FULL_TURNS, safe_num
+from .window import WINDOW_FLOOR_DAYS
 
 # 样本量分级门槛（初设值，本身也是拍的——但它只影响「说不说得准」的措辞，不影响数字）
 MIN_PERCENTILE_SAMPLES = 5    # 低于此连分位形状都谈不上，只当量级参考
 MIN_RELIABLE_SAMPLES = 20     # 低于此波动大，不足以据此动阈值
+
+# 回放切片默认窗口长度：必须与真实评估窗口同口径，见 replay_windows 的 docstring。
+REPLAY_WINDOW_DAYS = WINDOW_FLOOR_DAYS
 
 # 姿态派生序列键（由快照顶层 posture_distribution 算出，不在 _CORE_KEYS 里）
 POSTURE_L3 = "posture_L3"
@@ -48,16 +54,79 @@ _DERIVED_KEYS = (DEPTH_SIGNAL, ADVANCED)
 DIR_FLOOR = "floor"       # 下限门：值 ≥ 阈值才算过
 DIR_CEILING = "ceiling"   # 上限门：值 > 阈值即判超
 DIR_SCALE = "scale"       # 刻度线：雷达满格，无过/不过之分
-# 文案参数：只决定 reason 的措辞，对 state / 档位判定**完全无影响**（空转旋钮）。
-# 单列一档不是洁癖：把空转旋钮混在真门里、用同一套「过门/未过门」图例呈现，
-# 是比方向写反更难发现的错——照着调低了，重跑报告一个字不变，也没人告诉你它是空转的。
-DIR_TEXT = "text"
+# 曾有第四类 DIR_TEXT「文案参数」，用于标注只挑 reason 措辞、不参与判定的空转旋钮
+# （l3/l4_healthy_floor）。那两个字段已从 PostureBands 删除——与其在校准表里解释
+# 「这个旋钮是空转的」，不如让它压根不存在。若将来又冒出空转字段，
+# tests/test_stage.py 的 test_posture_每个健康带字段都真的影响判定 会先红。
 
 # 受口径版本影响、跨 rubric 不可混采的序列键：git 口径三键（定义随 rubric 变）
 # + 姿态三键（rubric 名字就是 posture_rubric，分档语义随之变）。
 _STALE_SENSITIVE = frozenset(_CALIBER_SENSITIVE_KEYS) | frozenset(_POSTURE_KEYS)
 
 SERIES_KEYS = tuple(_CORE_KEYS) + _DERIVED_KEYS + _POSTURE_KEYS
+
+
+def replay_windows(first_day: date, last_day: date, window_days: int = REPLAY_WINDOW_DAYS,
+                   step_days: int | None = None) -> list:
+    """[first_day, last_day] 内切出等长回放窗口，返回升序的 [(since, until)]（右开区间）。
+
+    **窗口长度必须与真实评估窗口同口径**（默认取 `window.WINDOW_FLOOR_DAYS`）。
+    阈值是按「一个评估窗口内的量级」定的——`s2_active_days=5` 意为「30 天窗口内至少
+    5 个活跃日」。拿 7 天切片算出的 active_days 分布去定位它，是跨口径相除的同类错误，
+    分位会整体偏低、诱导人把门调低。故 window_days 可调但默认对齐，改小要自己清楚在做什么。
+
+    从 last_day 往回排：保证每片都是完整的 window_days 天，宁可丢掉头部不足一窗的残段，
+    也要让最近的数据必被覆盖（残段算出的量级偏低，混进分布就是掺假观测）。
+    step_days < window_days 时切片重叠——观测不再独立，方差被低估，调用方须据此出声。
+    """
+    step = window_days if step_days is None else step_days
+    if window_days <= 0 or step <= 0 or last_day < first_day:
+        return []
+    out = []
+    until = last_day + timedelta(days=1)   # 右开：含 last_day 当天
+    while True:
+        since = until - timedelta(days=window_days)
+        if since < first_day:
+            break
+        out.append((since, until))
+        until -= timedelta(days=step)
+    return list(reversed(out))
+
+
+# 回放切片测不到的键：git 三键要跑 git log（每片一次子进程，且落地率是奖惩挂钩指标，
+# 宁可不测也不能测错）；姿态四档要跑 LLM extractor。这些在 replay 里是**未测量**，
+# 不是真值 0——故伪快照里整键不放，让 extract_series 自然跳过、calibrate 如实报「无样本」。
+REPLAY_UNMEASURED = frozenset(_CALIBER_SENSITIVE_KEYS)
+
+
+def window_indices(last_days, windows) -> list:
+    """每条会话按其 last_day 归入各回放窗口，返回与 windows 同序的下标列表。
+
+    窗口是右开区间 [since, until)。切片重叠（step < window）时同一条会话会进多个窗口
+    ——这正是滑动窗口的含义，但也意味着观测不独立、方差被低估，调用方须据此出声。
+    last_day 为 None（时间戳不可解析）的会话不进任何窗口：宁漏勿误，与 discover 同纪律。
+    """
+    out = []
+    for since, until in windows or []:
+        out.append([i for i, d in enumerate(last_days or [])
+                    if d is not None and since <= d < until])
+    return out
+
+
+def replay_snapshot(until: date, metrics: dict) -> dict:
+    """一个回放切片的 aggregate → 伪快照（与真快照同结构，喂给 calibrate 的统一入口）。
+
+    只搬 `_CORE_KEYS` 白名单里**真正测到**的键：`REPLAY_UNMEASURED` 整键不放、
+    `posture_distribution` 整个不放。放 0 会让 calibrate 把「没测」当成「测出来是 0」，
+    s4_git_landed 之类的分位就完全错了——与 diff 侧「缺失不当 0」是同一条纪律。
+    generated_at 取窗口末日（含），只出日期不出任何路径。
+    """
+    m = {k: v for k, v in (metrics or {}).items()
+         if k in _CORE_KEYS and k not in REPLAY_UNMEASURED}
+    end = until - timedelta(days=1)
+    return {"generated_at": f"{end.isoformat()}T00:00:00+00:00",
+            "metrics": m,
+            "posture_rubric": CURRENT_POSTURE_RUBRIC}
 
 
 def percentile(values, q: float):
@@ -130,8 +199,7 @@ def sample_caveat(n: int):
     return None
 
 
-_DIR_LABEL = {DIR_FLOOR: "下限门", DIR_CEILING: "上限门", DIR_SCALE: "刻度线",
-              DIR_TEXT: "文案参数"}
+_DIR_LABEL = {DIR_FLOOR: "下限门", DIR_CEILING: "上限门", DIR_SCALE: "刻度线"}
 
 _EXTREME = 0.05   # 分位贴到两端多近才改用「几乎全部」的定性说法
 
@@ -144,14 +212,10 @@ def read_percentile(direction: str, p) -> str:
     - 上限门（> 即判超）= 阈值低于所有观测 = 每个窗口都超限、次次触发判定；
     - 刻度线 = 满格低于所有观测 = 轴被截顶。
     三种读法各自成立，混用会把「该调高」读成「该调低」。
-    第四类 DIR_TEXT 是空转旋钮：分位仍是有效的位置信息，但**不能给任何过门读法**——
-    它压根不参与判定，说「该调高/该调低」等于诱导人做一次不产生任何变化的改动。
     """
     if p is None:
         return ""
     p = float(p)
-    if direction == DIR_TEXT:
-        return f"约 {p:.0%} 的观测低于它；此参数只决定 reason 措辞，改它不改变判定结果"
     if direction == DIR_CEILING:
         if p <= _EXTREME:
             return "几乎所有观测都超过上限（次次判超，多半该调高或重审这条带）"
@@ -284,11 +348,7 @@ def threshold_specs(thresholds: StageThresholds = DEFAULT_STAGE_THRESHOLDS,
     对不上快照序列的就明写 metric=None + 原因——漏项等于悄悄放弃校准。
     方向逐条对着 `stage.py` 的判定式定：`decide_stage` 的闸门全是 `>=`（下限门）；
     `diagnose_posture` 里只有 `l4 > l4_healthy_ceiling` 是上限门，决策点样本门、
-    引导力下限、Plan 次数门是「达到才算」的下限门；而 `l3_healthy_floor` /
-    `l4_healthy_floor` 走过 ceiling 与 guide_floor 之后两条分支都 `return 健康`，
-    对 state 毫无影响，只挑 reason 措辞 —— 故标 DIR_TEXT 单列，不混进真门的图例。
-    （这条耦合由 tests/test_calibrate.py 的
-    `test_stage_的两条健康下沿对判定完全无影响` 钉住：哪天让它们真的分档，那条会红。）
+    引导力下限、Plan 次数门是「达到才算」的下限门。
     """
     t, b = thresholds, bands
     return [
@@ -311,11 +371,6 @@ def threshold_specs(thresholds: StageThresholds = DEFAULT_STAGE_THRESHOLDS,
         _spec(_STAGE_GROUP, "s4_custom_min", t.s4_custom_min, "custom_skill_count"),
         _spec(_POSTURE_GROUP, "min_decision_points", b.min_decision_points,
               "decision_point_count", "样本门：低于它整档不判姿态"),
-        _spec(_POSTURE_GROUP, "l3_healthy_floor", b.l3_healthy_floor, POSTURE_L3,
-              "空转旋钮：只决定 diagnose_posture 的 reason 措辞，不改变 state——"
-              "调它重跑报告判定一个字不变（两条分支都返回「健康」）", DIR_TEXT),
-        _spec(_POSTURE_GROUP, "l4_healthy_floor", b.l4_healthy_floor, POSTURE_L4,
-              "空转旋钮：同 l3_healthy_floor，只决定 reason 措辞，不改变 state", DIR_TEXT),
         _spec(_POSTURE_GROUP, "l4_healthy_ceiling", b.l4_healthy_ceiling, POSTURE_L4,
               "唯一的上限门：L4 占比超过它即判「偏对抗」", DIR_CEILING),
         _spec(_POSTURE_GROUP, "guide_floor", b.guide_floor, POSTURE_L34),
@@ -383,7 +438,12 @@ def _fmt(v) -> str:
     f = safe_num(v) if not isinstance(v, bool) else None
     if f is None:
         return "—"
-    if abs(f - round(f)) < 1e-9 and abs(f) < 1e6:
+    # 大数走紧凑单位：token_total 这类 10 位数按原样打会正好占满列宽、与相邻列粘连，
+    # 肉眼分不出字段边界（校准表是等宽对齐的，一列撑破整屏就废了）。
+    for unit, scale in (("G", 1e9), ("M", 1e6)):
+        if abs(f) >= scale:
+            return f"{f / scale:.1f}{unit}"
+    if abs(f - round(f)) < 1e-9:
         return str(int(round(f)))
     return f"{f:.3f}".rstrip("0").rstrip(".")
 
@@ -417,7 +477,24 @@ def format_report(result: dict) -> str:
     span = result.get("span") or {}
     span_txt = (f"（{span.get('first')} ~ {span.get('last')}）"
                 if span.get("first") else "")
-    lines.append(f"样本：{n} 个快照{span_txt}")
+    rp = result.get("replay")
+    if rp:
+        # 回放口径与快照口径不可混读，必须先声明清楚，否则「20 个样本」会被当成
+        # 20 次独立评估——重叠切片下它们高度相关，方差被低估。
+        lines.append(f"样本：{n} 个回放切片{span_txt}（不是历史快照）")
+        lines.append(f"  切片窗口 {rp.get('window_days')} 天 / 步长 {rp.get('step_days')} 天"
+                     f"{'，相邻切片重叠' if rp.get('overlapping') else '，互不重叠'}")
+        if rp.get("overlapping"):
+            lines.append("  ⚠ 重叠切片的观测不独立，方差被低估——分位只当量级参考，"
+                         "别拿它当独立样本算可信度")
+        if rp.get("empty_windows"):
+            lines.append(f"  {rp['empty_windows']} 个窗口内没有会话，已跳过（空窗不是低用量）")
+        if rp.get("reason"):
+            lines.append(f"  {rp['reason']}")
+        lines.append("  git 落地与姿态四档在回放里**未测量**（不跑 git log、不跑 LLM），"
+                     "相关阈值会如实标无样本")
+    else:
+        lines.append(f"样本：{n} 个快照{span_txt}")
     stale = result.get("stale_rubric_count") or 0
     if stale:
         lines.append(f"其中 {stale} 个为旧口径快照，受口径影响的指标已从样本中剔除")
@@ -443,7 +520,6 @@ def format_report(result: dict) -> str:
     lines.append("  下限门（≥ 才过）：0% = 人人过门/形同虚设，100% = 无人过门")
     lines.append("  上限门（> 即判超）：0% = 观测次次超限/次次触发，100% = 从未触及")
     lines.append("  刻度线（雷达满格）：0% = 观测被截顶，100% = 长期贴不到满格")
-    lines.append("  文案参数：不参与任何判定，分位仅供参考——调它不会改变报告结论")
     group = None
     for row in result.get("thresholds") or []:
         if row["group"] != group:
@@ -457,9 +533,15 @@ def format_report(result: dict) -> str:
             lines.append(f"{head}→ 不可测：{row['metric']} 在现有快照里无样本")
             continue
         direction = row.get("direction", DIR_FLOOR)
-        tail = (f"→ {row['metric']} 第 {row['percentile']:.0%} 分位（n={row['n']}）"
-                f"｜{_DIR_LABEL.get(direction, direction)}："
-                f"{read_percentile(direction, row['percentile'])}")
+        head_txt = (f"→ {row['metric']} 第 {row['percentile']:.0%} 分位（n={row['n']}）"
+                    f"｜{_DIR_LABEL.get(direction, direction)}：")
+        if row["n"] < MIN_PERCENTILE_SAMPLES:
+            # 样本极少时压住定性读法：n=1 只能算出 0%/50%/100% 三个分位，
+            # 「几乎所有观测都过门」是一个观测撑不起的断言。行尾的 ⚠ 来得太晚——
+            # 定性结论已经先入为主。数字照给（位置仍有参考价值），话不敢说满。
+            tail = head_txt + f"样本仅 {row['n']} 个，不足以给出「过门/未过门」的定性判断"
+        else:
+            tail = head_txt + read_percentile(direction, row["percentile"])
         if row.get("caveat"):
             # 逐条只挂短标记，完整措辞在页头说一次——但绝不省略：每行都得看得见「不可靠」
             tail += f"  ⚠ 不可靠（样本 {row['n']}）"

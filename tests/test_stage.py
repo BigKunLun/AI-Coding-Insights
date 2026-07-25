@@ -233,3 +233,37 @@ def test_posture_bands_overridable():
     r = diagnose_posture({"L1": 0.2, "L2": 0.25, "L3": 0.4, "L4": 0.15},
                          decision_point_count=100, bands=bands)
     assert r["state"] == "偏对抗"
+
+
+# ---------- 防空转旋钮回归 ----------
+
+# 覆盖 diagnose_posture 各条分支的固定样本：(四档分布, 决策点数, plan 次数)
+_姿态样本 = [
+    ({"L1": 0.40, "L2": 0.35, "L3": 0.05, "L4": 0.20}, 100, 0),  # 引导力低
+    ({"L1": 0.10, "L2": 0.10, "L3": 0.70, "L4": 0.10}, 60, 0),   # L3 主力
+    ({"L1": 0.30, "L2": 0.20, "L3": 0.50, "L4": 0.00}, 30, 0),   # L4 为零
+    ({"L1": 0.50, "L2": 0.40, "L3": 0.05, "L4": 0.05}, 100, 3),  # 引导力低但 plan 多
+    ({"L1": 0.20, "L2": 0.20, "L3": 0.30, "L4": 0.30}, 100, 0),  # L4 超上限
+    ({"L1": 0.25, "L2": 0.25, "L3": 0.25, "L4": 0.25}, 10, 0),   # 决策点不足
+    ({"L1": 0.15, "L2": 0.15, "L3": 0.60, "L4": 0.10}, 500, 5),  # 高样本高引导
+]
+
+
+def test_posture_每个健康带字段都真的影响判定():
+    """PostureBands 的每个字段都必须存在一组输入使它改变 state，否则就是空转旋钮。
+
+    历史教训：`l3_healthy_floor` / `l4_healthy_floor` 曾挂在带里，但走过 ceiling 与
+    guide_floor 之后两条分支都 `return 健康`，它们只挑 reason 措辞。calibrate 却照常
+    为它们印出分位与「该调高/该调低」的指引——照着调，重跑报告一个字不变，也没人
+    告诉你它是空转的。这比方向写反更难发现，故用测试从机制上挡住：新加的健康带字段
+    若扫不出任何判定影响，这条会红。
+    """
+    fields = vars(DEFAULT := PostureBands())
+    for name, default in fields.items():
+        低 = PostureBands(**{**fields, name: type(default)(0)})
+        高 = PostureBands(**{**fields, name: 0.999 if isinstance(default, float) else 999})
+        变了 = any(
+            diagnose_posture(pd, dp, plan_mode_sessions=plan, bands=低)["state"]
+            != diagnose_posture(pd, dp, plan_mode_sessions=plan, bands=高)["state"]
+            for pd, dp, plan in _姿态样本)
+        assert 变了, f"{name} 是空转旋钮：取极低/极高值 state 都不变，不该挂在健康带里"

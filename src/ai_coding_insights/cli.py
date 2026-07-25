@@ -12,7 +12,9 @@ from .batch import make_batches
 from .customization import scan_custom_skills, detect_hook_config, compute_customization_signals
 from .snapshot import (save_snapshot, load_latest, load_all, diff_metrics,
                        DEFAULT_SNAPSHOT_DIR, _CORE_KEYS)
-from .calibrate import calibrate, format_report as format_calibration
+from .calibrate import (REPLAY_WINDOW_DAYS, calibrate,
+                        format_report as format_calibration,
+                        replay_snapshot, replay_windows, window_indices)
 from .profile_schema import validate_profile
 from .obs_check import check_obs_coverage, check_posture_counts, sum_posture_counts
 from .evidence_check import extract_turn_uuids, flag_missing_pointers
@@ -23,6 +25,7 @@ from .stage import assemble_posture
 from .report import render_count_report, render_profile_report
 from .view_model import build_view
 from .models import InsightsReport
+from .timeutil import parse_timestamp
 
 
 def _make_pointer_checker():
@@ -621,13 +624,62 @@ def _cmd_calibrate(args) -> int:
     快照（复用 snapshot.load_all 的读取规则），不碰会话原文/batch/obs/git。
     样本不足时逐层挂 caveat 明确出声，不静默给出看起来很确定的数字。
     """
-    snapshots = load_all(Path(args.snapshot_dir).expanduser())
+    if getattr(args, "replay", False):
+        snapshots, replay_meta = _replay_snapshots(args)
+    else:
+        snapshots, replay_meta = load_all(Path(args.snapshot_dir).expanduser()), None
     result = calibrate(snapshots)
+    if replay_meta:
+        result["replay"] = replay_meta
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(format_calibration(result), end="")
     return 0
+
+
+def _replay_snapshots(args) -> tuple:
+    """把历史会话按等长窗口切片重放成伪快照，绕开「攒够快照」的等待。
+
+    动因：窗口闸门是「距上次检查不足 30 天即 too_soon」，快照最快 30 天落一个，
+    攒到 20 个要 1.6 年——靠等快照校准阈值这条路走不通。而档位闸门用的全是**规则层
+    硬指标**（不需要 LLM），完全可以拿本机既有会话按同口径窗口重算出来。
+
+    只解析一次全部会话再在纯函数层归片（`window_indices`），不是每片重扫一遍：
+    jsonl 解析是这条路径的大头，重扫 N 遍会把几秒变成几分钟。
+    git 与姿态指标不测（见 `REPLAY_UNMEASURED`），如实报无样本而不是填 0。
+    """
+    cfg = load_config(resolve_config_path(args.config, args.plugin_root))
+    now = datetime.now(timezone.utc)
+    win_days = max(1, int(args.replay_window or REPLAY_WINDOW_DAYS))
+    step = args.replay_step if args.replay_step else win_days
+    # 回看范围要足够覆盖本机全部 transcript：CC 默认只留 30 天，但用户可能调大过
+    # cleanupPeriodDays，故按实际最早数据点定，取不到就退回一个宽口径上限。
+    data_start = detect_data_start(Path(args.projects_dir))
+    first_dt = parse_timestamp(data_start) if data_start else None
+    lookback = max(win_days, (now - first_dt).days + 1 if first_dt else 365)
+    sessions = discover_sessions(Path(args.projects_dir), cfg.discovery_rules,
+                                 lookback, now)
+    last_days = [d.date() if (d := parse_timestamp(s.last_ts)) else None
+                 for s in sessions]
+    known = [d for d in last_days if d is not None]
+    if not known:
+        return [], {"windows": 0, "window_days": win_days, "step_days": step,
+                    "overlapping": step < win_days, "reason": "本机没有可解析时间戳的会话"}
+    windows = replay_windows(min(known), max(known), win_days, step)
+    stats = [compute_stats(s, cfg.short_turn_max_chars) for s in sessions]
+    outcomes = [compute_outcome(s) for s in sessions]
+    snaps = []
+    for (since, until), idx in zip(windows, window_indices(last_days, windows)):
+        if not idx:
+            continue    # 空窗口不产样本：0 会话的「量级 0」是空窗不是低用量，混进分布即掺假
+        m = aggregate_metrics([sessions[i] for i in idx], [stats[i] for i in idx],
+                              [outcomes[i] for i in idx], repo_outcomes={})
+        snaps.append(replay_snapshot(until, _metrics_dict(m)))
+    return snaps, {"windows": len(snaps), "window_days": win_days, "step_days": step,
+                   "overlapping": step < win_days,
+                   "span": {"first": min(known).isoformat(), "last": max(known).isoformat()},
+                   "empty_windows": len(windows) - len(snaps)}
 
 
 def build_parser():
@@ -684,6 +736,13 @@ def build_parser():
     ca = sub.add_parser("calibrate")   # 手动调试命令：阈值分位定位，不进编排流程
     ca.add_argument("--snapshot-dir", default=str(DEFAULT_SNAPSHOT_DIR))
     ca.add_argument("--json", action="store_true")
+    # 回放模式：不等快照累积，直接把历史会话按等长窗口切片当样本（见 _cmd_calibrate）
+    ca.add_argument("--replay", action="store_true")
+    ca.add_argument("--replay-window", type=int, default=REPLAY_WINDOW_DAYS)
+    ca.add_argument("--replay-step", type=int, default=None)
+    ca.add_argument("--projects-dir", default=str(Path.home()/".claude"/"projects"))
+    ca.add_argument("--config", default=None)
+    ca.add_argument("--plugin-root", default=None)
     rs = sub.add_parser("reset")
     rs.add_argument("--state-dir", default=str(Path.home() / ".ai-coding-insights"))
     rs.add_argument("--dry-run", action="store_true")

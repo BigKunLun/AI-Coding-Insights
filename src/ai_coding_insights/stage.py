@@ -176,8 +176,6 @@ def decide_stage(metrics: dict,
 class PostureBands:
     """姿态健康带（初设值待校准，可覆盖）。"""
     min_decision_points: int = 30   # 低于此样本不判
-    l3_healthy_floor: float = 0.25  # L3 主力下限
-    l4_healthy_floor: float = 0.05  # L4 健康带下沿
     l4_healthy_ceiling: float = 0.20  # L4 健康带上限，> 即偏对抗
     guide_floor: float = 0.25       # L3+L4 < 即引导力不足
     min_handsoff_plan_sessions: int = 2  # 引导力不足时翻判「放手为主」所需的 Plan 次数（初设值待校准）
@@ -224,9 +222,10 @@ def diagnose_posture(posture_distribution: dict, decision_point_count: int,
         return {"state": "偏依赖",
                 "reason": f"引导力 L3+L4 {l34:.0%} < {bands.guide_floor:.0%}，主动给约束偏少",
                 "values": vals}
-    if l3 >= bands.l3_healthy_floor and l4 >= bands.l4_healthy_floor:
-        return {"state": "健康",
-                "reason": f"L3 主力 {l3:.0%}、L4 在健康带 {l4:.0%}", "values": vals}
+    # 判「健康」的实际判据只有两条：引导力过 guide_floor、L4 未超 ceiling。
+    # 曾另有 l3_healthy_floor / l4_healthy_floor 两条「下沿」在此再分一次支，但两条
+    # 分支都返回「健康」——它们不参与判定、只挑 reason 措辞，属空转旋钮，已删。
+    # （防回归：tests/test_stage.py 的 test_posture_每个健康带字段都真的影响判定）
     return {"state": "健康",
-            "reason": f"引导力达 {l34:.0%}，分布在健康范围内（L3 {l3:.0%}/L4 {l4:.0%}）",
+            "reason": f"引导力 L3+L4 {l34:.0%} 达标、L4 {l4:.0%} 未超上限（L3 {l3:.0%}）",
             "values": vals}
