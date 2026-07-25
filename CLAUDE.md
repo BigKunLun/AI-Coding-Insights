@@ -19,7 +19,7 @@ uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-co
 
 零运行时依赖（纯 stdlib），dev 仅 pytest。
 
-规则层共 6 个子命令，正常由 skill 编排调用，单独调试时也可直接跑（点到存在即可，参数以代码为准）：
+规则层共 7 个子命令，正常由 skill 编排调用，单独调试时也可直接跑（点到存在即可，参数以代码为准）。**这份清单有测试守着**（`tests/test_skill_contract.py`）：子命令名与条数必须与 `cli.py` 实际注册面一致，加了子命令不补这里即测试红。
 
 - `scan` —— 扫描 / 窗口决策 / 分批 / 硬指标；`--emit-batches` 是编排主路径，四种输出形态互斥（`--emit-batches` / `--profile-input` / `--json` / 默认渲染 HTML）。
 - `init` —— 交互配置向导，从本机会话来源勾选团队归属。
@@ -27,6 +27,7 @@ uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-co
 - `render-profile` —— 渲染最终画像 HTML 报告。
 - `auto-scan` —— `SessionEnd` hook 后台自动评估（接线在 `hooks/hooks.json`；自带 lock 防重入 + 滚动日志，失败对用户静默）。
 - `reset` —— 清空本机可再生产物（`snapshots/` / `reports/` / `run/` / `auto-scan.log`）解除 30 天增量窗口闸门，**并把今日写进 `.auto-scan.lock`**（而非删它），压住 `SessionEnd` 的 auto-scan 当天抢先写新快照重新武装闸门——这是「reset 后重跑仍 too_soon」的根因修复。按白名单删、`--dry-run` 只预览，永不碰 `config.toml` 与会话原文。slash 入口 `commands/reset.md`。
+- `calibrate` —— 手动调试命令：读本机 `snapshots/` 里已脱敏的历史标量，给出各指标分布与当前阈值的分位定位。**不进 SKILL.md 编排、不产 HTML、不碰会话原文/batch/obs/git**；只给本机单人历史分布，不是人群分位，样本不足时逐层挂 caveat 而非静默给数。
 
 ## 架构原则
 
@@ -35,11 +36,14 @@ uv run python -m ai_coding_insights scan --plugin-root . --emit-batches ~/.ai-co
 - **规则层**（本仓库 Python）：确定性工作——会话发现与归属判定、解析、硬指标计算、渲染。凡是能用规则算的，不交给 LLM。
 - **LLM 层**（`skills/` 下的 SKILL.md，编排用户自己的 cc）：只做语义判定，产出结构化数据；像素（HTML）一律由脚本渲染。
 
-两层之间靠**文件契约**衔接，**改任何接缝必须两侧同步**：动了 CLI 输出或 schema，就要同步改 SKILL.md，反之亦然。当前接缝有名有姓（文件名即契约，改名或改字段须同步 SKILL.md）：
+两层之间靠**文件契约**衔接，**改任何接缝必须两侧同步**：动了 CLI 输出或 schema，就要同步改 SKILL.md，反之亦然。接缝失配的危害不是报错而是**不报错**——SKILL.md 自己就写着「专家读到错配的 obs 不报错，只会安静产出错误结论」，用户会拿到一份看起来正常的错报告。故这份清单**不只是纪律，还有可执行闸门**：`tests/test_skill_contract.py` 用纯文本/内省比对把下列接缝钉死（CLI 参数双向差集、SKILL.md 内嵌 profile 示例过 schema、reset 白名单三处真相源、锁协议格式、stdout 四行与值域）。**加接缝时顺手加断言**，别让清单退回纯人工纪律。
+
+当前接缝有名有姓（文件名即契约，改名或改字段须同步 SKILL.md）：
 
 - **manifest**：`scan --emit-batches` 的 stdout JSON。
 - **中间 JSON**（落 `--emit-batches` 目录）：`batch-NN.json`（LLM 分批输入）、`obs-*.json`（extractor 产出）、`_window.json`、`_aggregate.json`（已剥掉含项目名的 `project_breakdown`，含 `parse_health` / `customization_signals` 等字段）、`profile.json`（合成画像）。
-- **CLI 参数**：`render-profile` 的 `--metrics` / `--window` / `--obs-glob` / `--run-*`。
+- **CLI 参数**：`render-profile` 的 `--metrics` / `--window` / `--obs-glob` / `--run-*`。编排链路（`scan` / `verify-obs` / `render-profile`）新增参数时，要么写进 SKILL.md，要么在契约测试的豁免白名单里写明理由——没有「默认放过」。
+- **render-profile 的 stdout 四行**：报告路径 + `姿势分布: …` / `姿态健康态: …` / `成熟度档位: …`。SKILL.md 第 5 步要求**逐字照搬**这几行，行前缀改名等于让编排端取空值；两个值域（姿态 5 值 / 档位 4 档）的真相源在 `stage.py`，SKILL.md 抄了一份供编排端判读，改档名须两侧同步。值由 `view_model.build_view` 统一算定（纯函数，cli 与 HTML 各调一次必得同值）。
 - **profile schema**：`profile_schema.py`。
 - **reset 删除白名单**（`cli.py` 的 `_RESET_PRODUCTS`）：横跨 3 处真相源的「汇聚契约」——`snapshots`（引用 `DEFAULT_SNAPSHOT_DIR` 随动）、`reports`（`hooks/auto-scan-hook.sh` 的 `REPORT_DIR`）、`run`（SKILL.md 的 `--emit-batches` 落点）、`auto-scan.log`。**改任一落点须同步此白名单**，否则 reset 静默漏删 → 30 天闸门不解除。
 - **reset ↔ auto-scan 锁协议**：`.auto-scan.lock` 内容为 UTC `%Y-%m-%d`；`auto-scan` 见锁等于今日即整天跳过（`_cmd_auto_scan` 顶部），`reset` 借此把今日写进锁来压住抢占。**改锁格式/路径须三处同步**（auto-scan 写锁、auto-scan 读锁、reset 置锁）。

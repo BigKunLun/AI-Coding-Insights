@@ -52,7 +52,7 @@ def assemble_posture(llm_posture_counts: dict, option_pick_count) -> dict:
     l1, l2, l3, l4 = _n("L1"), _n("L2"), _n("L3"), _n("L4")
     try:
         picks = max(0, int(option_pick_count or 0))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):   # inf 走 OverflowError，同按非法值 0
         picks = 0
     dp = l1 + l2 + l3 + l4 + picks
     if dp <= 0:
@@ -88,7 +88,9 @@ def _stage_values(m: dict, t: StageThresholds) -> dict:
     def g(k):
         try:
             return int(round(float(m.get(k, 0) or 0)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
+            # OverflowError：JSON 允许 Infinity/NaN 字面量，int(inf) 会抛——
+            # 一个脏字段不能炸掉整张报告，与非数值同按 0 计。
             return 0
     # 深度信号只认主动行为：thinking 是 CC 默认开启的配置、几乎人人非零、无区分度，
     # 计入它会把 S3 深度门架空，故剔除。subagent/plan 才是用户主动深度参与的证据。

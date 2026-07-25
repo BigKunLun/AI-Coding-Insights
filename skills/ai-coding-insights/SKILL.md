@@ -154,5 +154,10 @@ uv run --project <PLUGIN_ROOT> python -m ai_coding_insights render-profile --plu
 - **摩擦建议 1-2 个要点** + 「较上次进步」（若有同比）+ **本次编排规模**（如「N 个 extractor + 5 个专家」；subagent 的 token 用量拿不到，不报数、不编造）。
 
 追加提醒（命中才加）：
-- `aggregate.parse_health.drift_flags` 非空：「检测到 N 个信号疑似随 CC 版本漂移（列信号名），相关维度本窗口数据可能失真，建议核对后修复提取规则」——数据可信度硬前置，不得省略。
+- `aggregate.parse_health.drift_flags` 非空：数据可信度硬前置，**不得省略**。每条带 `kind`，**按 kind 分述**（不要一律说成「漏数」，三类方向不同）：
+  - `kind="drop"`（存在率断崖下跌，`older_rate` → `newer_rate`）：「信号 X 在新版本段几乎消失，**可能漏数**，该维度偏低要打折看」。
+  - `kind="surge"`（存在率断崖上涨）：「信号 X 在新版本段突然普遍出现，**可能虚高**（提取规则把一条记成多条，也可能是你真的开始用了）」。
+  - `kind="shift"`（存在率没变但每会话中位数偏移，看 `older_median`/`newer_median`/`median_ratio`）：「信号 X 每会话中位数 A → B（约 N 倍），**量级口径可能被污染**」。
+  - 若 `surge`/`shift` 命中 `edit` 或 `gitop`：额外点名「**与奖惩挂钩的硬指标（编辑量 / 提交量）口径可能失真**，本次落地相关数字请人工复核后再用」。
+  - 统一收尾：「建议核对后修复提取规则」。
 - `window.truncated` 为 `true`：「名义窗口自 `since_date` 起，但本机 transcript 实际只保留到 `data_start`（CC 默认 `cleanupPeriodDays=30` 清理）；建议在 `~/.claude/settings.json` 把 `cleanupPeriodDays` 设为 ≥60，下次窗口才完整」。

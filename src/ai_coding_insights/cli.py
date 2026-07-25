@@ -10,7 +10,9 @@ from .git_outcome import repo_outcome, repo_root
 from .profile_input import build_session_input
 from .batch import make_batches
 from .customization import scan_custom_skills, detect_hook_config, compute_customization_signals
-from .snapshot import save_snapshot, load_latest, diff_metrics, DEFAULT_SNAPSHOT_DIR, _CORE_KEYS
+from .snapshot import (save_snapshot, load_latest, load_all, diff_metrics,
+                       DEFAULT_SNAPSHOT_DIR, _CORE_KEYS)
+from .calibrate import calibrate, format_report as format_calibration
 from .profile_schema import validate_profile
 from .obs_check import check_obs_coverage, check_posture_counts, sum_posture_counts
 from .evidence_check import extract_turn_uuids, flag_missing_pointers
@@ -19,6 +21,7 @@ from .rolling_log import append_rolling_log
 from .parse_health import compute_parse_health
 from .stage import assemble_posture
 from .report import render_count_report, render_profile_report
+from .view_model import build_view
 from .models import InsightsReport
 
 
@@ -342,10 +345,10 @@ def _cmd_render_profile(args) -> int:
         run["model"] = model
     if run:
         meta["run"] = run
-    # render_diag 接缝：render_profile_report 回填它内部已算出的 posture_state / stage_name，
-    # cli 直接打印到 stdout 供 LLM 编排端口头小结取用（不在 cli 另起调用重算，避免值不一致）。
-    render_diag: dict = {}
-    html = render_profile_report(profile, meta, metrics, diff, out=render_diag)
+    # stdout 接缝：posture_state / stage_name 取自 build_view——它是渲染同款判定的
+    # 唯一真相源且为纯函数，cli 与报告各调一次必得同值（不再靠出参把值捞回来）。
+    view = build_view(profile, meta, metrics, diff)
+    html = render_profile_report(profile, meta, metrics, diff)
     out = args.out or str(Path.cwd() / f"aci-report-{datetime.now().date().isoformat()}.html")
     out = _write_html(out, html)
     if not args.no_snapshot:
@@ -360,10 +363,10 @@ def _cmd_render_profile(args) -> int:
                       dir=snap_dir)
     print("姿势分布: " + " · ".join(
         f"{t} {assembled[t]:.0%}" for t in ("L1", "L2", "L3", "L4")))
-    # 接缝：姿态健康态 / 成熟度档位（值由 render_profile_report 算出回填，规则层单一真相源）。
+    # 接缝：姿态健康态 / 成熟度档位（值由 view_model 算定，规则层单一真相源）。
     # metrics 缺省时无判定，打「样本不足」/「—」占位，仍保证两行恒在（SKILL 据字段名取值）。
-    print("姿态健康态: " + (render_diag.get("posture_state") or "样本不足"))
-    print("成熟度档位: " + (render_diag.get("stage_name") or "—"))
+    print("姿态健康态: " + (view["posture_state"] or "样本不足"))
+    print("成熟度档位: " + (view["stage_name"] or "—"))
     print(out)
     return 0
 
@@ -611,7 +614,29 @@ def _cmd_reset(args) -> int:
     return 0
 
 
-def main(argv=None) -> int:
+def _cmd_calibrate(args) -> int:
+    """阈值校准：读本机历史快照，给出各指标分布与当前阈值的分位定位。
+
+    手动调试命令，不进 SKILL.md 编排、不产 HTML。只读 snapshots/ 下已脱敏的标量
+    快照（复用 snapshot.load_all 的读取规则），不碰会话原文/batch/obs/git。
+    样本不足时逐层挂 caveat 明确出声，不静默给出看起来很确定的数字。
+    """
+    snapshots = load_all(Path(args.snapshot_dir).expanduser())
+    result = calibrate(snapshots)
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(format_calibration(result), end="")
+    return 0
+
+
+def build_parser():
+    """构建顶层 parser，返回 (parser, 子命令 action)。
+
+    单独抽出来是为了让契约测试能内省「实际注册了哪些子命令与参数」，
+    与 SKILL.md / CLAUDE.md 里写的调用行做双向差集（见 tests/test_skill_contract.py）。
+    只建 parser、不解析、不做任何 IO。
+    """
     ap = argparse.ArgumentParser(prog="ai_coding_insights")
     sub = ap.add_subparsers(dest="cmd")
     sc = sub.add_parser("scan")
@@ -656,9 +681,18 @@ def main(argv=None) -> int:
     au.add_argument("--days", type=int, default=None)
     au.add_argument("--snapshot-dir", default=str(DEFAULT_SNAPSHOT_DIR))
     au.add_argument("--state-dir", default=None)   # lock + 滚动日志目录；缺省 ~/.ai-coding-insights
+    ca = sub.add_parser("calibrate")   # 手动调试命令：阈值分位定位，不进编排流程
+    ca.add_argument("--snapshot-dir", default=str(DEFAULT_SNAPSHOT_DIR))
+    ca.add_argument("--json", action="store_true")
     rs = sub.add_parser("reset")
     rs.add_argument("--state-dir", default=str(Path.home() / ".ai-coding-insights"))
     rs.add_argument("--dry-run", action="store_true")
+    return ap, sub
+
+
+def main(argv=None) -> int:
+    ap, sub = build_parser()
+    sc = sub.choices["scan"]
     # 向后兼容：Plan 1 的 SKILL.md 调用无子命令（如 `--config X --out Y`）。
     # argparse 子命令模式下，若 argv 首个 token 不是已知子命令，顶层 parse_args 会
     # 把后续 option 的取值误判为子命令选择并直接 SystemExit，根本到不了下面的
@@ -678,6 +712,8 @@ def main(argv=None) -> int:
             return _cmd_auto_scan(args)
         if args.cmd == "reset":
             return _cmd_reset(args)
+        if args.cmd == "calibrate":
+            return _cmd_calibrate(args)
         # 默认 / "scan"：向后兼容（无子命令时按 scan 解析）
         if args.cmd is None:
             args = sc.parse_args(raw)

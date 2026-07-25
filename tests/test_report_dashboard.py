@@ -525,6 +525,69 @@ def test_report_no_health_section_when_absent():
     assert "数据健康" not in html          # metrics 无 parse_health → 不渲染该段
 
 
+# ---- 漂移三类 kind 的渲染文案（HTML 是人真正看的产物，方向不能说反）----
+
+def _健康段(flag: dict) -> str:
+    """只带一条 drift flag 的数据健康段 HTML。"""
+    from ai_coding_insights.report import _render_health_section
+    return _render_health_section({
+        "cc_version_span": {"min": "2.1.142", "max": "2.1.175", "distinct": 31},
+        "unknown_record_types": [],
+        "drift_flags": [flag],
+    }, 1)
+
+
+def test_drift_drop_渲染成漏数方向():
+    html = _健康段({"signal": "plan", "kind": "drop",
+                 "older_rate": 0.31, "newer_rate": 0.0})
+    assert "老版本段 31%" in html and "新版本段 0%" in html
+    assert "漏数" in html                  # drop = 老有新无 → 偏低要打折看
+    assert "虚高" not in html
+
+
+def test_drift_surge_渲染成虚高方向而非漏数():
+    # 回归：surge（老段绝迹、新段普遍）曾被一律套 drop 文案「提取可能已失效」，方向说反。
+    html = _健康段({"signal": "skill", "kind": "surge",
+                 "older_rate": 0.0, "newer_rate": 0.8})
+    assert "老版本段 0%" in html and "新版本段 80%" in html
+    assert "虚高" in html
+    assert "漏数" not in html and "提取可能已失效" not in html
+
+
+def test_drift_shift_出中位数证据而非几乎相同的存在率():
+    # 回归：shift 的存在率两端几乎相等，印出来自相矛盾；真证据是每会话中位数比值。
+    html = _健康段({"signal": "edit", "kind": "shift",
+                 "older_rate": 0.96, "newer_rate": 0.97,
+                 "older_median": 3, "newer_median": 9, "median_ratio": 3.0})
+    assert "中位数 3 → 9" in html
+    assert "3.0 倍" in html
+    assert "量级" in html
+    assert "96%" not in html and "97%" not in html   # 不再印无信息量的存在率
+    assert "提取可能已失效" not in html
+
+
+def test_drift_硬指标命中时额外点名人工复核():
+    # edit / gitop 与奖惩挂钩，虚高/量级污染必须提示复核（与 SKILL.md 第 5 步同口径）。
+    html = _健康段({"signal": "gitop", "kind": "surge",
+                 "older_rate": 0.0, "newer_rate": 0.9})
+    assert "人工复核" in html
+    # 非硬指标不加这句，免得每条都喊狼来了
+    assert "人工复核" not in _健康段({"signal": "skill", "kind": "surge",
+                                 "older_rate": 0.0, "newer_rate": 0.9})
+
+
+def test_drift_缺_kind_时回退旧文案保持向后兼容():
+    # 旧 _aggregate.json（无 kind 字段）仍要出得来数，不能崩、不能空。
+    html = _健康段({"signal": "plan", "older_rate": 0.31, "newer_rate": 0.0})
+    assert "老版本段 31% → 新版本段 0%，提取可能已失效" in html
+
+
+def test_drift_shift_中位数缺失时不崩():
+    html = _健康段({"signal": "edit", "kind": "shift",
+                 "older_rate": 0.9, "newer_rate": 0.9})
+    assert "edit" in html and "健康" in html
+
+
 def test_pointer_title_never_leaks_real_project_name():
     # 隐私铁律：title 悬停曾直出含真实项目名的绝对路径。可见文本与 title 必须同为脱敏标签，
     # HTML 任何角落（含 title）都不得出现真实项目名 / 绝对路径段。
