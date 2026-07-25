@@ -884,7 +884,8 @@ def render_profile_report(profile: dict, meta: dict,
         f'{crit_html}'
         '<div class="fine-note">四档由 LLM 对每条真人输入逐条语义分档、规则层聚合组装；'
         'AskUserQuestion 选项回答按协议硬信号计入 L2。'
-        'L4 健康带约 5-20%，过高表示过度对抗、过低引导力不足；档位由绝对用量硬指标判定，与姿态分布解耦。</div>'
+        'L4 上限 20%，超过表示过度对抗；引导力看 L3+L4 合计（低于 25% 判偏依赖），'
+        'L4 本身没有下限——L3 撑起引导力同样是健康。档位由绝对用量硬指标判定，与姿态分布解耦。</div>'
         '</div>'
     )
 
