@@ -1,8 +1,49 @@
 [project]
 name = "ai-coding-insights"
-version = "0.1.0"
+# 预发布版本：spec 是「三家 harness 齐了才发 v1」的单闸门，当前处在 M1（打包地基），
+# 距离 v1 验收还差多源 parser / playbook 通用化 / 安装器。用 1.0.0a1 标明
+# 「奔着 v1 去、但还没到闸门」，比继续挂 0.1.0 更能表达进度，也不占用正式版号。
+version = "1.0.0a1"
+description = "只读本机 AI 编码会话记录，在本地产出一份 AI 协作画像与摩擦建议报告；数据不出本机。"
+readme = "README.md"
 requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "shijianing", email = "shijianing1210@gmail.com" }]
+keywords = [
+    "claude-code",
+    "ai-coding",
+    "developer-analytics",
+    "session-analysis",
+    "local-first",
+    "privacy",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Utilities",
+]
+# 铁律：零运行时依赖（纯 stdlib）。这一行被 tests/test_packaging.py 钉死。
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/BigKunLun/AI-Coding-Insights"
+Repository = "https://github.com/BigKunLun/AI-Coding-Insights"
+Issues = "https://github.com/BigKunLun/AI-Coding-Insights/issues"
+
+[project.scripts]
+# console script 包装器会把返回值交给 sys.exit()，而 cli.main 返回 int 退出码，
+# 因此直接指向 main 即可，退出码正确传递（tests/test_packaging.py 有断言守着）。
+ai-coding-insights = "ai_coding_insights.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
@@ -13,3 +54,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ai_coding_insights"]
+
+# playbook 随 wheel 分发：`install` 子命令要把它落到各 harness 的位置，
+# 而 uvx 场景下仓库根不存在，只能从包数据里取（见 playbook.py 的两段式解析）。
+# 真相源仍是仓库里那一份（CC plugin 布局 + 契约测试都盯着它），这里只是搬运。
+[tool.hatch.build.targets.wheel.force-include]
+"playbook/PLAYBOOK.md" = "ai_coding_insights/playbook/PLAYBOOK.md"

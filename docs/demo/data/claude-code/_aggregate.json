@@ -1,0 +1,466 @@
+{
+  "session_count": 68,
+  "human_input_count": 640,
+  "active_days": 16,
+  "avg_turns": 9.4,
+  "tool_breadth": 16,
+  "tool_session_counts": {
+    "Read": 66,
+    "Edit": 61,
+    "Bash": 58,
+    "Grep": 47,
+    "Glob": 39,
+    "Write": 33,
+    "TodoWrite": 30,
+    "Agent": 21,
+    "MultiEdit": 18,
+    "Skill": 15,
+    "BashOutput": 12,
+    "mcp__docsearch__lookup": 12,
+    "NotebookEdit": 6,
+    "EnterPlanMode": 9,
+    "ExitPlanMode": 9,
+    "Workflow": 3
+  },
+  "subagent_sessions": 21,
+  "workflow_sessions": 3,
+  "mcp_sessions": 12,
+  "model_counts": {
+    "model-a-large": 52,
+    "model-a-fast": 31,
+    "model-a-mini": 9
+  },
+  "commit_count": 46,
+  "landed_count": 38,
+  "edit_count": 512,
+  "duration_median_min": 24.5,
+  "anchor_counts": {
+    "override": 74,
+    "error": 118,
+    "code": 260,
+    "link": 41
+  },
+  "token_usage": {
+    "model-a-large": {
+      "input": 1180000,
+      "output": 214000,
+      "cache_read": 8640000,
+      "cache_creation": 930000
+    },
+    "model-a-fast": {
+      "input": 410000,
+      "output": 86000,
+      "cache_read": 2100000,
+      "cache_creation": 240000
+    },
+    "model-a-mini": {
+      "input": 96000,
+      "output": 21000,
+      "cache_read": 380000,
+      "cache_creation": 44000
+    }
+  },
+  "token_total": 14341000,
+  "trend": {
+    "first_half": {
+      "sessions": 31,
+      "commits": 19,
+      "landed_ratio": 0.58,
+      "override": 41,
+      "error": 71,
+      "short_ratio": 0.24
+    },
+    "second_half": {
+      "sessions": 37,
+      "commits": 27,
+      "landed_ratio": 0.7,
+      "override": 33,
+      "error": 47,
+      "short_ratio": 0.16
+    }
+  },
+  "short_turn_count": 96,
+  "option_pick_count": 26,
+  "decision_point_count": 666,
+  "git_landed_count": 41,
+  "git_commit_total": 63,
+  "landed_ratio": 0.6507936507936508,
+  "dropped_count": 8,
+  "friction_stats": {
+    "error_top_sessions": [
+      {
+        "rank": 1,
+        "error_turns": 14
+      },
+      {
+        "rank": 2,
+        "error_turns": 11
+      }
+    ],
+    "override_top_sessions": [
+      {
+        "rank": 1,
+        "override_turns": 9
+      }
+    ],
+    "error_session_share": 0.44,
+    "override_session_share": 0.29
+  },
+  "plan_mode_sessions": 9,
+  "plan_mode_count": 14,
+  "concurrent_days": 6,
+  "claude_md_sessions": 7,
+  "max_concurrent_sessions": 3,
+  "skill_counts": {
+    "skill-甲": 9,
+    "skill-乙": 5,
+    "skill-丙": 3
+  },
+  "skill_total_counts": {
+    "skill-甲": 22,
+    "skill-乙": 8,
+    "skill-丙": 4
+  },
+  "mcp_server_counts": {
+    "docsearch": 12
+  },
+  "daily": [
+    {
+      "date": "2026-07-11",
+      "session_count": 0,
+      "human_input_count": 0,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-12",
+      "session_count": 3,
+      "human_input_count": 28,
+      "commit_count": 2,
+      "landed_count": 1,
+      "edit_count": 21,
+      "token_total": 123000
+    },
+    {
+      "date": "2026-07-13",
+      "session_count": 5,
+      "human_input_count": 47,
+      "commit_count": 4,
+      "landed_count": 3,
+      "edit_count": 35,
+      "token_total": 205000
+    },
+    {
+      "date": "2026-07-14",
+      "session_count": 0,
+      "human_input_count": 3,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-15",
+      "session_count": 2,
+      "human_input_count": 22,
+      "commit_count": 1,
+      "landed_count": 0,
+      "edit_count": 14,
+      "token_total": 82000
+    },
+    {
+      "date": "2026-07-16",
+      "session_count": 7,
+      "human_input_count": 63,
+      "commit_count": 6,
+      "landed_count": 5,
+      "edit_count": 49,
+      "token_total": 287000
+    },
+    {
+      "date": "2026-07-17",
+      "session_count": 4,
+      "human_input_count": 37,
+      "commit_count": 3,
+      "landed_count": 2,
+      "edit_count": 28,
+      "token_total": 164000
+    },
+    {
+      "date": "2026-07-18",
+      "session_count": 0,
+      "human_input_count": 2,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-19",
+      "session_count": 6,
+      "human_input_count": 57,
+      "commit_count": 5,
+      "landed_count": 4,
+      "edit_count": 42,
+      "token_total": 246000
+    },
+    {
+      "date": "2026-07-20",
+      "session_count": 9,
+      "human_input_count": 85,
+      "commit_count": 8,
+      "landed_count": 7,
+      "edit_count": 63,
+      "token_total": 369000
+    },
+    {
+      "date": "2026-07-21",
+      "session_count": 3,
+      "human_input_count": 27,
+      "commit_count": 2,
+      "landed_count": 1,
+      "edit_count": 21,
+      "token_total": 123000
+    },
+    {
+      "date": "2026-07-22",
+      "session_count": 0,
+      "human_input_count": 1,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-23",
+      "session_count": 0,
+      "human_input_count": 2,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-24",
+      "session_count": 5,
+      "human_input_count": 48,
+      "commit_count": 4,
+      "landed_count": 3,
+      "edit_count": 35,
+      "token_total": 205000
+    },
+    {
+      "date": "2026-07-25",
+      "session_count": 8,
+      "human_input_count": 76,
+      "commit_count": 7,
+      "landed_count": 6,
+      "edit_count": 56,
+      "token_total": 328000
+    },
+    {
+      "date": "2026-07-26",
+      "session_count": 2,
+      "human_input_count": 18,
+      "commit_count": 1,
+      "landed_count": 0,
+      "edit_count": 14,
+      "token_total": 82000
+    },
+    {
+      "date": "2026-07-27",
+      "session_count": 0,
+      "human_input_count": 1,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-28",
+      "session_count": 3,
+      "human_input_count": 29,
+      "commit_count": 2,
+      "landed_count": 1,
+      "edit_count": 21,
+      "token_total": 123000
+    },
+    {
+      "date": "2026-07-29",
+      "session_count": 5,
+      "human_input_count": 48,
+      "commit_count": 4,
+      "landed_count": 3,
+      "edit_count": 35,
+      "token_total": 205000
+    },
+    {
+      "date": "2026-07-30",
+      "session_count": 0,
+      "human_input_count": 4,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-31",
+      "session_count": 2,
+      "human_input_count": 18,
+      "commit_count": 1,
+      "landed_count": 0,
+      "edit_count": 14,
+      "token_total": 82000
+    },
+    {
+      "date": "2026-08-01",
+      "session_count": 7,
+      "human_input_count": 64,
+      "commit_count": 6,
+      "landed_count": 5,
+      "edit_count": 49,
+      "token_total": 287000
+    },
+    {
+      "date": "2026-08-02",
+      "session_count": 4,
+      "human_input_count": 38,
+      "commit_count": 3,
+      "landed_count": 2,
+      "edit_count": 28,
+      "token_total": 164000
+    },
+    {
+      "date": "2026-08-03",
+      "session_count": 0,
+      "human_input_count": 3,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-08-04",
+      "session_count": 6,
+      "human_input_count": 58,
+      "commit_count": 5,
+      "landed_count": 4,
+      "edit_count": 42,
+      "token_total": 246000
+    },
+    {
+      "date": "2026-08-05",
+      "session_count": 9,
+      "human_input_count": 81,
+      "commit_count": 8,
+      "landed_count": 7,
+      "edit_count": 63,
+      "token_total": 369000
+    },
+    {
+      "date": "2026-08-06",
+      "session_count": 3,
+      "human_input_count": 28,
+      "commit_count": 2,
+      "landed_count": 1,
+      "edit_count": 21,
+      "token_total": 123000
+    },
+    {
+      "date": "2026-08-07",
+      "session_count": 0,
+      "human_input_count": 2,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-08-08",
+      "session_count": 0,
+      "human_input_count": 3,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-08-09",
+      "session_count": 5,
+      "human_input_count": 49,
+      "commit_count": 4,
+      "landed_count": 3,
+      "edit_count": 35,
+      "token_total": 205000
+    },
+    {
+      "date": "2026-08-10",
+      "session_count": 8,
+      "human_input_count": 72,
+      "commit_count": 7,
+      "landed_count": 6,
+      "edit_count": 56,
+      "token_total": 328000
+    }
+  ],
+  "custom_skill_count": 4,
+  "duration_p90_min": 71.0,
+  "turn_p90": 26,
+  "thinking_block_count": 318,
+  "thinking_sessions": 40,
+  "background_task_count": 11,
+  "background_sessions": 6,
+  "max_parallel_agents": 4,
+  "parallel_agent_turns": 9,
+  "source": "claude-code",
+  "unmeasured": [],
+  "capabilities": [
+    "background_task",
+    "cli_version",
+    "custom_skill",
+    "edit_count",
+    "edited_paths",
+    "git_operation",
+    "hooks",
+    "mcp",
+    "option_pick",
+    "plan_mode",
+    "project_md",
+    "skill",
+    "subagent",
+    "thinking",
+    "todo_list",
+    "token_usage",
+    "tool_calls",
+    "web_access",
+    "workflow"
+  ],
+  "customization_signals": {
+    "has_custom_skills": true,
+    "custom_skill_count": 4,
+    "claude_md_sessions": 7,
+    "has_hooks": false,
+    "hook_events": [],
+    "hooks_measured": true
+  },
+  "parse_health": {
+    "cc_version_span": {
+      "min": "9.9.101",
+      "max": "9.9.140",
+      "distinct": 7
+    },
+    "unknown_record_types": [
+      "demo-record-type"
+    ],
+    "drift_flags": [
+      {
+        "signal": "mcp",
+        "kind": "drop",
+        "older_rate": 0.41,
+        "newer_rate": 0.0
+      }
+    ]
+  }
+}

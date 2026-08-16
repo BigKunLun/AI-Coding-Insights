@@ -1,0 +1,3 @@
+# demo 渲染用的最小配置：只为让 render-profile 不去读本机个人配置。
+mode = "all"
+business_terms = []

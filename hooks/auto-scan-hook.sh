@@ -11,6 +11,11 @@
 #   - 空扫描不推进游标：无新增会话时不写快照，下次窗口仍完整
 # 因此本脚本无需回传任何状态，吞掉全部输出即可。
 #
+# 这条路径**只服务 Claude Code**：SessionEnd 生命周期 hook 是 CC 独有的机制
+# （Codex 无 hook；opencode 未探测），故下面显式写死 --source claude-code，不让它
+# 跟环境变量走。理由：hook 由 CC 调起、进程里当然是 CC 的环境变量，跟着走结果一样，
+# 但写死能让「哪天有人把这个脚本抄给别的 harness 用」立刻显形，而不是静默分析错来源。
+#
 # CLAUDE_PLUGIN_ROOT 由 Claude Code 在 hook 执行时注入为插件安装目录的绝对路径；
 # 缺省时（手动调试）回退到本脚本上级目录。
 ROOT="${CLAUDE_PLUGIN_ROOT:-"$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"}"
@@ -19,7 +24,7 @@ UV="$(command -v uv 2>/dev/null)"
 {
   if [ -n "$UV" ]; then
     "$UV" run --project "$ROOT" python -m ai_coding_insights auto-scan \
-      --out-dir "$REPORT_DIR" --plugin-root "$ROOT"
+      --out-dir "$REPORT_DIR" --plugin-root "$ROOT" --source claude-code
   fi
 } >/dev/null 2>&1
 exit 0

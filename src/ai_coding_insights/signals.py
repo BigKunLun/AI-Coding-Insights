@@ -5,6 +5,8 @@ from collections import defaultdict
 from datetime import timedelta
 
 from .models import AggregateMetrics, OutcomeStats, ParsedSession, SessionStats
+from .sources import (CLAUDE_CODE, Source, canonical_tools, get_source,
+                      unmeasured_fields)
 from .timeutil import parse_timestamp
 
 
@@ -152,12 +154,33 @@ def compute_concurrency(sessions, overlap_threshold_sec: int = 300
     return (max_concurrent, len(concurrent_days))
 
 
+def resolve_metric_source(sessions, source=None) -> Source:
+    """本窗口数据来自哪家 harness（纯函数）。
+
+    显式传入优先；否则从会话自带的 `source` 标记推断——同一次取数恒为单一来源
+    （来源跟触发环境走，不混合），故取第一条即可；空窗口兜底 claude-code。
+    """
+    if source is not None:
+        return source if isinstance(source, Source) else get_source(source)
+    for s in sessions or ():
+        if getattr(s, "source", None):
+            return get_source(s.source)
+    return get_source(CLAUDE_CODE)
+
+
 def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
                       custom_skill_count: int = 0,
-                      claude_md_sessions: int = 0) -> AggregateMetrics:
+                      claude_md_sessions: int = 0,
+                      source=None, extra_unmeasured=()) -> AggregateMetrics:
     # sessions: list[ParsedSession]; stats: list[SessionStats]; outcomes: list[OutcomeStats]
     # 三个列表一一对应(同序、等长)。repo_outcomes: {仓库根: RepoOutcome}——git 主锚
     # 由 cli 按窗口采集后传入，None=未采集（如旧调用路径）按零计。
+    # source: 来源名 / Source / None（None 从会话标记推断）。它决定 `unmeasured`——
+    # 该来源测不到的字段，其 0 是「没测」不是「没做」，全链路据此降级。
+    # extra_unmeasured: 本次取数路径**主动省掉**的测量（如 auto-scan 不跑 git log），
+    # 与来源能力无关但同样「未测量≠0」，一并并入。
+    src = resolve_metric_source(sessions, source)
+    unmeasured = sorted(set(unmeasured_fields(src.capabilities)) | set(extra_unmeasured))
     session_count = len(sessions)
     human_input_count = sum(st.turn_count for st in stats)
     short_turn_count = sum(st.short_turn_count for st in stats)
@@ -174,7 +197,10 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
     workflow_sessions = 0
     mcp_sessions = 0
     for s in sessions:
-        tools = set(s.tools_used)
+        # 工具名先规范化再聚合：各家给同一概念起的名字不同（`todowrite` / `TodoWrite` /
+        # `update_plan`），不统一的话「用没用过任务清单」这类判定在非 CC 来源上恒为否，
+        # 报告会误报一屏根本不存在的能力盲区。规范表在 sources.CANONICAL_TOOL_NAMES。
+        tools = set(canonical_tools(s.tools_used, getattr(s, "source", CLAUDE_CODE)))
         for t in tools:
             tool_session_counts[t] = tool_session_counts.get(t, 0) + 1
         if "Agent" in tools:
@@ -325,4 +351,26 @@ def aggregate_metrics(sessions, stats, outcomes, repo_outcomes=None,
         background_sessions=background_sessions,
         max_parallel_agents=max_parallel_agents,
         parallel_agent_turns=parallel_agent_turns,
+        source=src.name,
+        capabilities=sorted(src.capabilities),
+        unmeasured=unmeasured,
     )
+    # 「测到了就不算未测量」：能力集是**保守声明**（拿不准的不声明），但如果这一窗口
+    # 里该字段真的收到了非零观测，那它显然测得到——继续标「未测量」反而是把用户已经
+    # 做出的行为抹掉。典型场景：Codex 的 MCP 调用形状未验证故不声明 CAP_MCP，
+    # 一旦 parser 真收到了 mcp 服务器名，就该按真值呈现。
+    # 反向不成立：观测为 0/空**不能**反推「测得到但没做」——那正是 unmeasured 要防的错读。
+    return _drop_measured(metrics)
+
+
+def _drop_measured(metrics: AggregateMetrics) -> AggregateMetrics:
+    """把「其实收到了非零观测」的字段从 unmeasured 里摘掉（原地改，返回同一对象）。"""
+    def _empty(v) -> bool:
+        if isinstance(v, bool):
+            return not v
+        if isinstance(v, (int, float)):
+            return v == 0
+        return not v      # dict / list / None / ""
+    metrics.unmeasured = [f for f in metrics.unmeasured
+                          if _empty(getattr(metrics, f, None))]
+    return metrics

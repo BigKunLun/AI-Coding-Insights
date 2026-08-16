@@ -1,0 +1,13 @@
+{
+  "status": "incremental",
+  "lookback_days": 31,
+  "since_date": "2026-07-10",
+  "until_date": "2026-08-10",
+  "last_check_date": "2026-07-10",
+  "days_since_last": 31,
+  "message": null,
+  "data_start": "2026-07-10",
+  "truncated": false,
+  "mode": "all",
+  "source": "claude-code"
+}

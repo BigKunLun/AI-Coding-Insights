@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 驾驭力评估报告</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{font-family:system-ui,-apple-system,'PingFang SC','Segoe UI',sans-serif;
+  color:#344054;background:#f3f5fa;min-height:100vh;line-height:1.5}
+b{font-weight:700}
+.ink{color:#1b2440}
+.dim2{color:#9aa3b2}
+.n{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:600;font-variant-numeric:tabular-nums}
+.mono{font-family:ui-monospace,'SF Mono',Menlo,monospace}
+/* ---- 横幅 ----
+   单一深色底，不用双层 radial 光晕：那两团彩雾既压不住四个大数字，又和下面的
+   浅色主体撕成两半。层次改由字号与留白建立。 */
+.hero{background:#141b34;color:#fff;padding:40px 40px 34px}
+.hero-inner{max-width:960px;margin:0 auto}
+.hero-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.kicker{font-size:13px;font-weight:600;color:#93a0c4;letter-spacing:.6px}
+.hero-meta{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;color:#7885ab}
+.hero-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
+  flex-wrap:wrap;margin-top:26px}
+.stage-big{font-size:38px;font-weight:700;letter-spacing:-.5px;line-height:1.1}
+.stage-sub{font-size:13px;color:#93a0c4;margin-top:10px;max-width:52ch;line-height:1.6}
+/* 四数之间加竖分隔线：颜色统一之后，靠间距已经分不清是四组还是一串 */
+.hero-nums{display:flex;gap:26px}
+.hero-nums>div{padding-left:26px;border-left:1px solid rgba(255,255,255,.14)}
+.hero-nums>div:first-child{padding-left:0;border-left:none}
+.hnum{font-size:25px;font-weight:700;font-variant-numeric:tabular-nums}
+.hlbl{font-size:11.5px;color:#93a0c4;margin-top:3px}
+/* 横幅上的折叠：深底配色，行内展开不撑高首屏 */
+.hero-fold{display:inline}
+.hero-fold>summary{display:inline;cursor:pointer;color:#b9c3de;font-weight:600;
+  list-style:none}
+.hero-fold>summary::-webkit-details-marker{display:none}
+.hero-fold>summary::after{content:' ▸'}
+.hero-fold[open]>summary::after{content:' ▾'}
+.hero-detail{display:block;margin-top:6px;color:#8592b8;line-height:1.7}
+.pill-warn{display:inline-block;font-size:11px;font-weight:700;color:#7c2d12;
+  background:#fdeac2;border:1px solid #f0c674;border-radius:999px;
+  padding:2px 10px;margin-top:10px;white-space:nowrap}
+.keyline{height:2px;background:#4f46e5}
+/* ---- 主体 ---- */
+.main{max-width:960px;margin:0 auto;padding:34px 40px 64px}
+/* 间距刻度统一到 8 的倍数：节间 32、节内 12、卡内 20/24。
+   旧值 30/34/22/13/9/11.5 各行其是，累积出来的就是「密度看着乱」。 */
+.sec{display:flex;align-items:baseline;gap:10px;margin:32px 0 12px}
+.sec-first{margin-top:0}
+.sec-num{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;font-weight:700}
+.sec-title{font-size:15px;font-weight:700;color:#101828}
+.sec-hint{font-size:12.5px;color:#667085}
+/* 卡片：去掉纵向渐变与双层投影（在浅灰底上二者都看不出来，只是把边缘搞浑） */
+.card{background:#fff;border:1px solid #e8ebf2;border-radius:12px;
+  box-shadow:0 1px 2px rgba(20,28,52,.05)}
+.card-title{font-size:13px;font-weight:700;color:#101828}
+.fine-note{font-size:11.5px;color:#667085;line-height:1.6;margin-top:10px}
+.sec-note{margin-top:10px}
+/* 来源口径 caveat：琥珀色、置顶、不可折叠——它改变的是下面所有数字怎么读 */
+.caveat-card{padding:14px 16px;margin-top:22px;border-color:#f0d9a8;
+  background:linear-gradient(180deg,#fffaf0,#fffdf8)}
+.caveat-card .card-title{color:#92500e}
+.caveat-list{margin:8px 0 0 18px;font-size:12.5px;color:#5c4319;line-height:1.7}
+.cv-fold{display:inline}
+.cv-fold>summary{display:inline;cursor:pointer;color:#a1670f;font-weight:600;
+  list-style:none;margin-left:6px}
+.cv-fold>summary::-webkit-details-marker{display:none}
+.cv-fold>summary::before{content:'▸ '}
+.cv-fold[open]>summary::before{content:'▾ '}
+.cv-detail{margin:5px 0 2px;padding:8px 11px;background:#fdf6e7;border-radius:7px;
+  color:#6b5222;line-height:1.65}
+/* 档位 beta 角标：阈值尚未经人群分位校准，标出来免得被当成已定论的评级 */
+.beta-chip{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:6px;
+  font-size:11px;font-weight:700;letter-spacing:.4px;vertical-align:middle;
+  color:#fff;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.45)}
+.tag{font-size:11px;font-weight:700;border-radius:5px;padding:2px 8px;
+  height:fit-content;white-space:nowrap;flex:0 0 auto}
+.tag-advice{color:#b45309;background:#fdeac2}
+.tag-unused{color:#6d28d9;background:#ede7fc;transform:translateY(2px)}
+.tag-ok{color:#15803d;background:#dcfce7;transform:translateY(2px)}
+/* ---- metrics ---- */
+.fam-card{padding:4px 22px}
+.fam{padding:16px 0;border-bottom:1px solid #eef0f5}
+.fam-last{border-bottom:none}
+.fam-head{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;
+  margin-bottom:12px}
+.fam-swatch{width:8px;height:8px;border-radius:3px;flex:0 0 auto}
+.m-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.m-num{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.m-num .unit{font-size:15px;color:#667085}
+.m-lbl{font-size:12px;color:#667085;margin-top:2px}
+.delta{font-weight:700;font-size:.95em;font-family:ui-monospace,'SF Mono',Menlo,monospace;
+  font-variant-numeric:tabular-nums}
+/* ---- 降级来源的紧凑网格 ----
+   摘掉未测量格后通常只剩 9 格上下，再分四族会让每族只剩一两个格、右侧全是洞。
+   紧凑态铺成一个连续的 4 列网格（族名不再出现，格子少到那份上分组不带信息了）。
+   只有存在折叠项时才加这个 class，CC 满格路径的版面一像素不动。 */
+.fam-compact .fam{padding:18px 0 6px}
+.fam-compact .m-grid{row-gap:22px}
+/* ---- 未测量折叠区：低调但可见，收起时只占一行 ---- */
+.um-fold{border-top:1px solid #eef0f5;padding-top:12px;margin-top:2px}
+.um-fold>summary{cursor:pointer;font-size:12px;color:#667085;font-weight:600;
+  list-style:none;user-select:none}
+.um-fold>summary::-webkit-details-marker{display:none}
+.um-fold>summary::before{content:'▸ ';color:#98a2b3}
+.um-fold[open]>summary::before{content:'▾ '}
+.um-hint{font-weight:400;color:#98a2b3}
+.um-body{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}
+.um-item{display:inline-flex;align-items:baseline;gap:6px;padding:5px 10px;
+  border:1px dashed #d0d5dd;border-radius:7px;background:#fcfcfd;font-size:12px;
+  color:#475467}
+.um-fam{color:#98a2b3;font-size:11px}
+/* ---- highlights ---- */
+.hl-card{padding:8px 22px}
+.hl-row{display:flex;align-items:baseline;gap:12px;padding:13px 0;border-bottom:1px solid #eef0f5}
+.hl-last{border-bottom:none}
+.hl-dot{flex:0 0 auto;width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700;
+  display:inline-flex;align-items:center;justify-content:center;transform:translateY(4px)}
+.hl-text{font-size:13.5px;color:#54607a;line-height:1.65;flex:1}
+.hl-link{font-size:12px;color:#4f46e5;white-space:nowrap;font-weight:500;cursor:help}
+.ptr-miss{color:#b45309;font-size:11px;font-weight:700;white-space:nowrap}
+/* ---- posture ---- */
+.posture-full{padding:24px 26px}
+.stack-big{display:flex;width:100%;height:44px;border-radius:9px;overflow:hidden;font-size:13px;font-weight:700;margin-top:6px}
+.bseg{display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden;white-space:nowrap}
+.lg-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px;margin-top:16px;font-size:12.5px;color:#54607a;line-height:1.5}
+.crit-cols{display:flex;gap:30px;margin-top:20px;padding-top:16px;border-top:1px solid #eef0f5;flex-wrap:wrap}
+.crit-col{flex:1;min-width:200px}
+.crit-cap{font-size:11px;font-weight:700;letter-spacing:.5px;margin-bottom:8px}
+.crit-cap-ok{color:#059669}
+/* 「还差」用琥珀不用红：红色 ✗ 读起来是「你不合格」，而本项目的定位是给证据、
+   不下判决。差距是距离，不是错误。 */
+.crit-cap-miss{color:#b45309}
+.lg-row{display:flex;gap:8px}
+.lg-swatch{flex:0 0 auto;width:10px;height:10px;border-radius:3px;transform:translateY(4px)}
+.crit-list{display:grid;gap:10px;font-size:13px;color:#475467}
+.crit-row{display:flex;justify-content:space-between;gap:10px}
+.crit-ok{color:#059669;font-weight:700;font-variant-numeric:tabular-nums}
+.crit-miss{color:#b45309;font-weight:700;font-variant-numeric:tabular-nums}
+.crit-na{color:#667085}
+/* ---- dimensions ---- */
+.radar-card{padding:22px;display:grid;grid-template-columns:320px 1fr;gap:8px 26px;
+  align-items:center}
+.radar{margin:0 auto;display:block}
+.dim-rows{display:grid;align-content:center}
+.dim-row{display:grid;grid-template-columns:46px 120px 1fr;gap:14px;align-items:baseline;
+  padding:12px 0;border-bottom:1px solid #eef0f5}
+.dim-last{border-bottom:none}
+.dim-name{font-size:12px;font-weight:700}
+.dim-val{font-size:20px;font-weight:700;color:#101828;font-variant-numeric:tabular-nums;
+  letter-spacing:-.4px}
+.dim-unit{font-size:11.5px;font-weight:500;color:#667085;margin-left:5px}
+.dim-desc{font-size:12.5px;color:#54607a;line-height:1.55}
+.dim-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.dim-card{padding:18px 22px 14px}
+.dim-card-head{display:flex;align-items:baseline;gap:8px}
+.dim-swatch{width:8px;height:8px;border-radius:3px;flex:0 0 auto;transform:translateY(-1px)}
+.dim-card-title{font-size:13.5px;font-weight:700;color:#101828}
+.dim-card-sub{font-size:12.5px;color:#667085;margin:4px 0 6px 16px}
+.pt-list{display:grid}
+.pt-row{padding:10px 0;border-bottom:1px solid #eef0f5}
+.pt-last{border-bottom:none}
+.pt-line{font-size:13px;color:#54607a;line-height:1.85}
+.pt-desc{font-size:12.5px;line-height:1.55;margin-top:2px}
+.depth-card{padding:18px 22px 22px;margin-top:16px}
+.depth-sub{margin-bottom:14px}
+.depth-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.depth-cell{background:#f8f9fc;border-radius:10px;padding:14px 16px}
+.depth-desc{font-size:12.5px;line-height:1.65;margin-top:4px}
+/* ---- friction ---- */
+.fr-list{display:grid;gap:12px}
+.fr-card{padding:18px 22px}
+.fr-obs{font-size:13.5px;color:#344054;line-height:1.7}
+.fr-ptrs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+/* ---- timeline ---- */
+.tl-card{padding:20px 22px 16px}
+.tl-wrap{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid #e1e5ef;margin-top:8px}
+.tl-bar{flex:1;border-radius:3px 3px 0 0;position:relative;min-height:2px}
+.tl-val{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#1a6b5a;font-weight:700}
+.tl-axis{display:flex;justify-content:space-between;font-size:11px;color:#8a93a8;margin-top:6px}
+/* ---- 工具/技能/MCP 附录 ---- */
+.tok-card{padding:20px 24px;margin-top:12px}
+.tok-card>.tok-block+.tok-block{margin-top:16px;padding-top:14px;border-top:1px solid #eef0f5}
+.tok-block{margin-bottom:8px}
+.tok-block summary{cursor:pointer;font-size:13px;font-weight:600;color:#475467;padding:4px 0;list-style:none}
+.tok-block summary::-webkit-details-marker{display:none}
+.tok-chart{margin-top:8px;display:grid;gap:5px}
+.tok-row{display:grid;grid-template-columns:160px 1fr 48px;gap:9px 12px;align-items:center;font-size:12.5px}
+.tok-label{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#54607a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tok-bar-wrap{height:9px;border-radius:4px;background:#eef1f6;overflow:hidden}
+.tok-bar{display:block;height:100%;border-radius:4px;background:#6366f1}
+.tok-val{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#1b2440;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.fr-box{display:flex;gap:10px;margin-top:10px;background:#fffaeb;border:1px solid #fdeac2;
+  border-radius:8px;padding:10px 14px}
+.fr-sug{font-size:13px;color:#57534e;line-height:1.7}
+/* ---- capabilities ---- */
+.cap-card{padding:18px 22px;display:grid;gap:10px}
+.cap-row{display:flex;gap:12px;font-size:13.5px;color:#344054;line-height:1.7}
+/* ---- health ---- */
+.health-card{padding:16px 20px;font-size:13px;line-height:1.7}
+.health-span{color:#54607a}
+.health-flag{margin-top:6px;padding:8px 12px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;color:#991b1b}
+.health-unknown{margin-top:8px;color:#667085}
+/* ---- trend ---- */
+.trend-card{padding:8px 22px 16px}
+table.trend{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+table.trend th{padding:12px 8px 9px;text-align:left;font-size:12px;color:#667085;
+  font-weight:600;border-bottom:1px solid #e1e5ef}
+table.trend th:first-child{padding-left:0}
+table.trend th.num-col{text-align:right}
+table.trend th.dir-col{text-align:center;padding-right:0}
+table.trend td{padding:10px 8px;font-size:13px;border-bottom:1px solid #eef0f5}
+table.trend td:first-child{padding-left:0}
+table.trend tbody tr:last-child td{border-bottom:none}
+.t-name{color:#344054}
+.t-a{color:#475467;text-align:right}
+.t-b{color:#101828;font-weight:600;text-align:right}
+.t-dir{font-weight:700;text-align:center;padding-right:0}
+/* ---- 附录 ---- */
+.appendix{padding:16px 22px;margin-bottom:12px}
+.appendix summary{cursor:pointer;font-size:13.5px;font-weight:700;color:#3730a3;list-style:none}
+.appendix summary::-webkit-details-marker{display:none}
+.tok-grid{display:grid;grid-template-columns:auto 1fr auto;gap:9px 14px;align-items:center;
+  margin-top:18px;font-size:12.5px}
+.tok-name{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#475467}
+.tok-track{height:12px;border-radius:4px;background:#eef1f6;overflow:hidden}
+.tok-fill{height:100%;border-radius:4px}
+.tok-note{margin-top:8px}
+.tok-table{margin-top:14px}
+.tok-table td{font-size:12.5px}
+.tok-cell{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#344054}
+.tok-total{font-weight:700;color:#101828}
+.ev-list{display:grid;margin-top:10px}
+.ev-row{display:flex;align-items:baseline;gap:14px;padding:11px 0;border-bottom:1px solid #eef0f5}
+.ev-last{border-bottom:none}
+.ev-text{font-size:13px;color:#344054;line-height:1.65;flex:1}
+.ptr-chip{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;color:#4f46e5;
+  background:#ecf9fc;border:1px solid #c9ecf4;border-radius:5px;padding:2px 8px;
+  white-space:nowrap;cursor:help}
+/* ---- 页脚 ---- */
+.footer{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:34px;
+  padding-top:16px;border-top:1px solid #e1e5ef;font-size:11.5px;color:#667085}
+.footer-id{font-family:ui-monospace,'SF Mono',Menlo,monospace}
+/* ---- 窄屏 / 打印 ---- */
+@media (max-width:720px){
+  .hero,.main{padding-left:20px;padding-right:20px}
+  .radar-card,.dim-cards,.depth-grid,.lg-grid{grid-template-columns:1fr}
+  .m-grid{grid-template-columns:repeat(2,1fr)}
+  .hero-nums{gap:20px;flex-wrap:wrap}
+  /* 窄屏：固定大像素列会撑破容器/触发横滚——首列可缩 */
+  .tok-row{grid-template-columns:minmax(80px,140px) 1fr 44px;gap:8px}
+}
+@media print{
+  .hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head><body>
+<div class="hero">
+<div class="hero-inner">
+<div class="hero-top">
+<div class="kicker">AI 驾驭力评估 · Codex CLI · 首次基线 · 近 30 天 · 个人模式（全部本机会话）</div>
+<div class="hero-meta">2026-08-16 · 47 会话 · 3 项目</div>
+</div>
+<div class="hero-bottom">
+<div>
+<div class="stage-big">第 2 档 · 进阶期<span class="beta-chip" title="档位阈值为初设值，仅经本机单人分布粗校，无人群分位背书；作自我定位参考，不作横向评比">beta</span></div>
+<div class="stage-sub">距下一档还差 2 项判据（1 项本来源测不到，已跳过） · 首次基线，暂无同比 · 右侧为四维各自的代表值</div>
+
+</div>
+<div class="hero-nums"><div><div class="hnum" style="color:#ffffff">56%</div><div class="hlbl">成果 · 落地率</div></div><div><div class="hnum" style="color:#ffffff">偏依赖</div><div class="hlbl">姿态健康</div></div><div><div class="hnum" style="color:#ffffff">9</div><div class="hlbl">水平 · 工具广度</div></div><div><div class="hnum" style="color:#ffffff">18</div><div class="hlbl">深度 · P90 轮次/会话</div></div></div>
+</div>
+</div>
+</div>
+<div class="keyline"></div>
+<div class="main">
+<div class="card caveat-card"><div class="card-title">读数前提 · 来源口径</div><ul class="caveat-list"><li>16 项指标在 Codex CLI 会话记录里没有对位概念，报告中标为「未测量」，请勿读作 0<details class="cv-fold"><summary>看清单</summary><div class="cv-detail">后台委托会话、后台委托、会话内提交、观测丢弃、会话内落地、真并行峰值、MCP 服务器分布、MCP 会话、选项应答数、真并行轮次、计划模式次数、计划模式会话、技能使用会话数、技能调用次数、SubAgent 会话、Workflow 会话</div></details></li><li>成熟度档位有 1 项判据本来源测不到、已跳过，档位与其他来源不直接可比<details class="cv-fold"><summary>看清单</summary><div class="cv-detail">深度信号 ≥ 1（子代理/Plan 任一）</div></details></li></ul></div><div class="sec sec-first"><span class="sec-num" style="color:#98a2b3">01</span><span class="sec-title">指标明细</span><span class="sec-hint">横幅四数为四维代表值，此处不再重复</span></div><div class="card fam-card fam-compact"><div class="fam fam-last"><div class="m-grid"><div><div class="m-num" style="color:#4338ca">19</div><div class="m-lbl">落地提交</div></div><div><div class="m-num" style="color:#101828">34</div><div class="m-lbl">提交总数</div></div><div><div class="m-num" style="color:#101828">388</div><div class="m-lbl">编辑数</div></div><div><div class="m-num" style="color:#101828">2</div><div class="m-lbl">使用模型数</div></div><div><div class="m-num" style="color:#101828">204</div><div class="m-lbl">深度推理</div></div><div><div class="m-num" style="color:#101828">47</div><div class="m-lbl">会话数</div></div><div><div class="m-num" style="color:#101828">470</div><div class="m-lbl">有效输入</div></div><div><div class="m-num" style="color:#101828">11</div><div class="m-lbl">活跃天数</div></div><div><div class="m-num" style="color:#101828">52<span class="unit">min</span></div><div class="m-lbl">时长 P90</div></div></div></div><details class="um-fold"><summary>本来源测不到的 7 项<span class="um-hint">（点开查看 · 测不到 ≠ 0）</span></summary><div class="um-body"><span class="um-item"><b>观测丢弃</b><span class="um-fam">产出落地</span></span><span class="um-item"><b>SubAgent 会话</b><span class="um-fam">协作编排</span></span><span class="um-item"><b>Workflow 会话</b><span class="um-fam">协作编排</span></span><span class="um-item"><b>MCP 会话</b><span class="um-fam">协作编排</span></span><span class="um-item"><b>后台委托</b><span class="um-fam">高阶行为</span></span><span class="um-item"><b>真并行峰值</b><span class="um-fam">高阶行为</span></span><span class="um-item"><b>真并行轮次</b><span class="um-fam">高阶行为</span></span></div></details></div><div class="sec"><span class="sec-num" style="color:#98a2b3">02</span><span class="sec-title">姿势分布与档位判据</span></div><div class="card posture-full"><div class="card-title">姿势分布（主导性）</div><div class="stack-big"><span class="bseg" style="width:37.50%;background:#e0e7ff;color:#312e81" title="L1 38%">L1 38%</span><span class="bseg" style="width:46.43%;background:#a5b4fc;color:#312e81" title="L2 46%">L2 46%</span><span class="bseg" style="width:12.50%;background:#6366f1;color:#ffffff" title="L3 12%">L3 12%</span><span class="bseg" style="width:3.57%;background:#3730a3;color:#ffffff" title="L4 4%"></span></div><div class="lg-grid"><div class="lg-row"><span class="lg-swatch" style="background:#e0e7ff"></span><span><b class="ink">L1 跟随 38%</b> · 纯放行 / 跟随确认，未在 AI 已给信息之外增加信息</span></div><div class="lg-row"><span class="lg-swatch" style="background:#a5b4fc"></span><span><b class="ink">L2 选择 46%</b> · 只选 AI 给的选项，不加约束（含 AskUserQuestion 选项回答）</span></div><div class="lg-row"><span class="lg-swatch" style="background:#6366f1"></span><span><b class="ink">L3 引导 12%</b> · 主动给目标 / 约束 / 格式，贴报错追问</span></div><div class="lg-row"><span class="lg-swatch" style="background:#3730a3"></span><span><b class="ink">L4 主导 4%</b> · 带技术具体性纠错，推翻方案，给 AI 没想到的约束</span></div></div><div class="crit-cols"><div class="crit-col"><div class="crit-cap crit-cap-ok">当前第 2 档 · 已达标</div><div class="crit-list"><div class="crit-row"><span>活跃天数 ≥ 5 天</span><span class="crit-ok">11 天 ✓</span></div><div class="crit-row"><span>有效输入 ≥ 80 条</span><span class="crit-ok">470 条 ✓</span></div><div class="crit-row"><span>工具广度 ≥ 6 种</span><span class="crit-ok">9 种 ✓</span></div></div></div><div class="crit-col"><div class="crit-cap crit-cap-miss">距下一档 · 还差</div><div class="crit-list"><div class="crit-row"><span>活跃天数 ≥ 12 天</span><span class="crit-miss">11 天 ✗</span></div><div class="crit-row"><span>工具广度 ≥ 10 种</span><span class="crit-miss">9 种 ✗</span></div></div></div></div><div class="fine-note">四档由 LLM 对每条真人输入逐条语义分档、规则层聚合组装；AskUserQuestion 选项回答按协议硬信号计入 L2。L4 上限 20%，超过表示过度对抗；引导力看 L3+L4 合计（低于 25% 判偏依赖），L4 本身没有下限——L3 撑起引导力同样是健康。档位由绝对用量硬指标判定，与姿态分布解耦。</div></div><div class="sec"><span class="sec-num" style="color:#98a2b3">03</span><span class="sec-title">四维画像与维度详述</span></div><div class="card radar-card"><svg class="radar" width="300" height="300" viewBox="0 0 320 320" role="img" aria-label="四维画像雷达图"><polygon points="160.0,50.0 270.0,160.0 160.0,270.0 50.0,160.0" fill="none" stroke="rgba(16,24,40,.12)" stroke-width="1"/><polygon points="160.0,105.0 215.0,160.0 160.0,215.0 105.0,160.0" fill="none" stroke="rgba(16,24,40,.08)" stroke-width="1"/><line x1="160.0" y1="160.0" x2="160.0" y2="50.0" stroke="rgba(16,24,40,.12)" stroke-width="1"/><line x1="160.0" y1="160.0" x2="270.0" y2="160.0" stroke="rgba(16,24,40,.12)" stroke-width="1"/><line x1="160.0" y1="160.0" x2="160.0" y2="270.0" stroke="rgba(16,24,40,.12)" stroke-width="1"/><line x1="160.0" y1="160.0" x2="50.0" y2="160.0" stroke="rgba(16,24,40,.12)" stroke-width="1"/><polygon points="160.0,142.3 188.3,160.0 160.0,259.0 98.5,160.0" fill="rgba(70,64,217,0.10)" stroke="#4640d9" stroke-width="2.5" stroke-linejoin="round"/><circle cx="160.0" cy="142.3" r="3.5" fill="#0891b2"/><circle cx="188.3" cy="160.0" r="3.5" fill="#0891b2"/><circle cx="160.0" cy="259.0" r="3.5" fill="#0891b2"/><circle cx="98.5" cy="160.0" r="3.5" fill="#0891b2"/><text x="160.0" y="30.2" text-anchor="middle" font-size="13" fill="#475467">姿势</text><text x="289.8" y="160.0" text-anchor="start" font-size="13" fill="#475467">水平</text><text x="160.0" y="289.8" text-anchor="middle" font-size="13" fill="#475467">深度</text><text x="30.2" y="160.0" text-anchor="end" font-size="13" fill="#475467">成果</text></svg><div class="dim-rows"><div class="dim-row"><span class="dim-name" style="color:#4f46e5">姿势</span><span class="dim-val n" style="color:#4f46e5">偏依赖<span class="dim-unit">姿态</span></span><span class="dim-desc">引导力 L3+L4 <span class="n" style="color:#4f46e5">16%</span> &lt; <span class="n" style="color:#4f46e5">25%</span>，主动给约束偏少；本来源测不到 Plan mode，无法判别是否属「放手为主」</span></div><div class="dim-row"><span class="dim-name" style="color:#4f46e5">水平</span><span class="dim-val n" style="color:#4f46e5">9<span class="dim-unit">种工具</span></span><span class="dim-desc">工具面 <span class="n" style="color:#4f46e5">9</span> 种，集中在读改跑三件事上，编排类动作基本没出现</span></div><div class="dim-row"><span class="dim-name" style="color:#4f46e5">深度</span><span class="dim-val n" style="color:#4f46e5">18<span class="dim-unit">P90 轮/会话</span></span><span class="dim-desc">P90 轮次 <span class="n" style="color:#4f46e5">18</span>，报错闭环较快，但极短输入占比偏高</span></div><div class="dim-row dim-last"><span class="dim-name" style="color:#4f46e5">成果</span><span class="dim-val n" style="color:#4f46e5">56%<span class="dim-unit">落地率</span></span><span class="dim-desc">落地率 <span class="n" style="color:#4f46e5">56%</span>：git 主锚口径，独立于会话记录可复算 · 落地 <span class="n" style="color:#4f46e5">19</span></span></div></div></div><div class="dim-cards"><div class="card dim-card"><div class="dim-card-head"><span class="dim-swatch" style="background:#4f46e5"></span><span class="dim-card-title">水平 · 工具广度</span></div><div class="dim-card-sub">工具面 9 种，集中在读改跑三件事上，编排类动作基本没出现</div><div class="pt-list"><div class="pt-row"><div class="pt-line">改动一律走结构化补丁（<span class="n" style="color:#4f46e5">38</span> 场），不是整文件覆写</div></div><div class="pt-row pt-last"><div class="pt-line">外部检索只用了 <span class="n" style="color:#4f46e5">6</span> 场，多数事实判断仍靠模型记忆</div></div></div></div><div class="card dim-card"><div class="dim-card-head"><span class="dim-swatch" style="background:#4f46e5"></span><span class="dim-card-title">成果 · 落地</span></div><div class="dim-card-sub">落地率 56%：git 主锚口径，独立于会话记录可复算</div><div class="pt-list"><div class="pt-row"><div class="pt-line">窗口内本人提交 <span class="n" style="color:#4f46e5">34</span> 次，<span class="n" style="color:#4f46e5">19</span> 次的改动文件与会话编辑集有交集</div></div><div class="pt-row pt-last"><div class="pt-line">会话内提交回执这一项本来源取不到，落地口径只靠 git 主锚</div></div><div class="pt-row pt-last"><div class="pt-line">落地 <span class="n" style="color:#4f46e5">19</span></div></div><div class="fine-note">落地率 = 改动文件命中 AI 编辑的提交 ÷ 窗口同仓本人提交总数（同口径）。</div></div></div></div><div class="card depth-card"><div class="dim-card-head"><span class="dim-swatch" style="background:#4f46e5"></span><span class="dim-card-title">深度 · 多轮打磨</span></div><div class="dim-card-sub depth-sub">P90 轮次 18，报错闭环较快，但极短输入占比偏高</div><div class="depth-grid"><div class="depth-cell"><div class="pt-line">极短输入 <span class="n" style="color:#4f46e5">136</span> 条（占 <span class="n" style="color:#4f46e5">29%</span>）：大量「继续 / 可以 / 好的」式放行</div></div><div class="depth-cell"><div class="pt-line">报错锚点 <span class="n" style="color:#4f46e5">96</span> 次，其中过半集中在 <span class="n" style="color:#4f46e5">5</span> 场会话里</div></div></div></div><div class="fine-note sec-note">维度详述、摩擦建议与证据描述的文字由 LLM 解读生成；数字以指标卡与表格的硬指标为准。</div><div class="sec"><span class="sec-num" style="color:#98a2b3">04</span><span class="sec-title">摩擦 + 建议</span></div><div class="fr-list"><div class="card fr-card"><div class="fr-obs">近三成输入是纯放行（「继续」「可以」），方案定型阶段没有补充过约束。</div><div class="fr-ptrs"><span class="ptr-chip" title="demo-cx-">demo-cx- ↗</span> <span class="ptr-miss">⚠ 指针未命中</span></div><div class="fr-box"><span class="tag tag-advice">建议</span><span class="fr-sug">放行前加一句「按什么标准算做完」——哪怕只写一条验收条件，也把选择题变成带约束的委托。</span></div></div><div class="card fr-card"><div class="fr-obs">涉及外部库行为的判断多数没有检索，直接采信了模型给的用法。</div><div class="fr-box"><span class="tag tag-advice">建议</span><span class="fr-sug">凡是「某个库怎么用」的问题，先让它检索再回答；把这条写进项目约定文件，省得每次口头交代。</span></div></div></div><div class="sec"><span class="sec-num" style="color:#98a2b3">05</span><span class="sec-title">高光时刻</span></div><div class="card hl-card"><div class="hl-row hl-last"><span class="hl-dot" style="background:#eef2ff;color:#3730a3">1</span><span class="hl-text">把「已排除的可能性」显式写出来，避免 AI 重复给已被否掉的方案</span><span class="hl-link" title="demo-cx-">原会话 ↗</span> <span class="ptr-miss">⚠ 指针未命中</span></div></div><div class="sec"><span class="sec-num" style="color:#98a2b3">06</span><span class="sec-title">活动热力</span></div><div class="card tl-card"><div class="tl-wrap"><div class="tl-bar" style="height:2.0%;background:#ebedf0" title="2026-07-18：0 会话"></div><div class="tl-bar" style="height:40.0%;background:#c6e7da" title="2026-07-19：2 会话"></div><div class="tl-bar" style="height:80.0%;background:#c6e7da" title="2026-07-20：4 会话"></div><div class="tl-bar" style="height:60.0%;background:#c6e7da" title="2026-07-21：3 会话"></div><div class="tl-bar" style="height:2.0%;background:#ebedf0" title="2026-07-22：0 会话"></div><div class="tl-bar" style="height:100.0%;background:#c6e7da" title="2026-07-23：5 会话"><span class="tl-val">5</span></div><div class="tl-bar" style="height:20.0%;background:#c6e7da" title="2026-07-24：1 会话"></div><div class="tl-bar" style="height:2.0%;background:#ebedf0" title="2026-07-25：0 会话"></div><div class="tl-bar" style="height:2.0%;background:#ebedf0" title="2026-07-26：0 会话"></div><div class="tl-bar" style="height:40.0%;background:#c6e7da" title="2026-07-27：2 会话"></div><div class="tl-bar" style="height:80.0%;background:#c6e7da" title="2026-07-28：4 会话"></div><div class="tl-bar" style="height:60.0%;background:#c6e7da" title="2026-07-29：3 会话"></div><div class="tl-bar" style="height:2.0%;background:#ebedf0" title="2026-07-30：0 会话"></div><div class="tl-bar" style="height:100.0%;background:#c6e7da" title="2026-07-31：5 会话"><span class="tl-val">5</span></div><div class="tl-bar" style="height:20.0%;background:#c6e7da" title="2026-08-01：1 会话"></div><div class="tl-bar" style="height:2.0%;background:#ebedf0" title="2026-08-02：0 会话"></div><div class="tl-bar" style="height:2.0%;background:#ebedf0" title="2026-08-03：0 会话"></div><div class="tl-bar" style="height:40.0%;background:#c6e7da" title="2026-08-04：2 会话"></div><div class="tl-bar" style="height:80.0%;background:#c6e7da" title="2026-08-05：4 会话"></div><div class="tl-bar" style="height:60.0%;background:#c6e7da" title="2026-08-06：3 会话"></div><div class="tl-bar" style="height:2.0%;background:#ebedf0" title="2026-08-07：0 会话"></div><div class="tl-bar" style="height:100.0%;background:#c6e7da" title="2026-08-08：5 会话"><span class="tl-val">5</span></div><div class="tl-bar" style="height:20.0%;background:#c6e7da" title="2026-08-09：1 会话"></div><div class="tl-bar" style="height:2.0%;background:#ebedf0" title="2026-08-10：0 会话"></div></div><div class="tl-axis"><span>2026-07-18</span><span>2026-08-10</span></div><div class="fine-note">每柱为当日会话数，色深按当日活跃分档；峰值标数值。讲节奏趋势，与下文「窗口趋势」互证。</div></div><div class="sec"><span class="sec-num" style="color:#98a2b3">07</span><span class="sec-title">窗口内趋势</span></div><div class="card trend-card"><table class="trend"><thead><tr><th>指标</th><th class="num-col">前半段（22 会话）</th><th class="num-col">后半段（25 会话）</th><th class="dir-col">方向</th></tr></thead><tbody><tr><td class="t-name">纠偏锚点（次/会话）</td><td class="t-a">1.00</td><td class="t-b">0.64</td><td class="t-dir" style="color:#475467">↓</td></tr><tr><td class="t-name">报错锚点（次/会话）</td><td class="t-a">2.64</td><td class="t-b">1.52</td><td class="t-dir" style="color:#475467">↓</td></tr><tr><td class="t-name">极短输入占比</td><td class="t-a">31%</td><td class="t-b">27%</td><td class="t-dir" style="color:#475467">↓</td></tr></tbody></table><div class="fine-note">前后半按窗口内实际数据的时间中点切分；计数类指标已按每会话密度归一。落地率为会话内提交观测口径（与头部 git 主锚口径不同），某半提交不可观测时记「—」。箭头只示变化方向，不评判好坏。</div></div><div class="sec"><span class="sec-num" style="color:#98a2b3">08</span><span class="sec-title">能力盲区</span></div><div class="card cap-card"><div class="cap-row"><span class="tag tag-unused">未使用</span><span><b class="ink">任务清单</b> —— 多步任务让 AI 维护进度清单，长会话不丢步骤</span></div><div class="cap-row"><span class="tag tag-unused">未使用</span><span><b class="ink">自建 Skill</b> —— 把重复性工作封装成自己的可复用 skill，从消费者进阶为流程产品化者</span></div></div><div class="sec"><span class="sec-num" style="color:#98a2b3">09</span><span class="sec-title">数据健康</span></div><div class="card health-card"><div class="health-span">数据横跨 <span class="n" style="color:#7c3aed">4</span> 个 CC 版本（0.60.1–0.62.4），跨度内未见解析漂移</div></div>
+<div class="sec"><span class="sec-num" style="color:#667085">附录</span><span class="sec-title">明细数据</span><span class="sec-hint">默认折叠，点开查看</span></div><details class="card appendix" open><summary>A · Token 消耗（含缓存读写，非计费口径，仅作量级参考 · 总计 6.2M）</summary><div class="tok-grid"><span class="tok-name">model-b-high</span><div class="tok-track"><div class="tok-fill" style="width:100.0%;background:#4f46e5"></div></div><span class="tok-val">171.0K</span><span class="tok-name">model-b-mini</span><div class="tok-track"><div class="tok-fill" style="width:22.2%;background:#4f46e5"></div></div><span class="tok-val">38.0K</span></div><div class="fine-note tok-note">条形为各模型 output token</div><table class="trend tok-table"><thead><tr><th>模型</th><th class="num-col">input</th><th class="num-col">output</th><th class="num-col">cache_read</th><th class="num-col">cache_creation</th></tr></thead><tbody><tr><td class="tok-cell">model-b-high</td><td class="t-a">860.0K</td><td class="t-a">171.0K</td><td class="t-a">4.3M</td><td class="t-a">0</td></tr><tr><td class="tok-cell">model-b-mini</td><td class="t-a">190.0K</td><td class="t-a">38.0K</td><td class="t-a">640.0K</td><td class="t-a">0</td></tr><tr><td class="tok-total">总计</td><td colspan="4" class="tok-total t-a">6.2M</td></tr></tbody></table></details><div class="card tok-card"><details class="tok-block" open><summary><b>高频工具 Top 10</b></summary><div class="tok-chart"><div class="tok-row"><span class="tok-label" title="shell">shell</span><span class="tok-bar-wrap"><span class="tok-bar" style="width:100.0%"></span></span><span class="tok-val">44</span></div><div class="tok-row"><span class="tok-label" title="read_file">read_file</span><span class="tok-bar-wrap"><span class="tok-bar" style="width:93.2%"></span></span><span class="tok-val">41</span></div><div class="tok-row"><span class="tok-label" title="apply_patch">apply_patch</span><span class="tok-bar-wrap"><span class="tok-bar" style="width:86.4%"></span></span><span class="tok-val">38</span></div><div class="tok-row"><span class="tok-label" title="exec_command">exec_command</span><span class="tok-bar-wrap"><span class="tok-bar" style="width:50.0%"></span></span><span class="tok-val">22</span></div><div class="tok-row"><span class="tok-label" title="list_dir">list_dir</span><span class="tok-bar-wrap"><span class="tok-bar" style="width:43.2%"></span></span><span class="tok-val">19</span></div><div class="tok-row"><span class="tok-label" title="grep">grep</span><span class="tok-bar-wrap"><span class="tok-bar" style="width:38.6%"></span></span><span class="tok-val">17</span></div><div class="tok-row"><span class="tok-label" title="update_plan">update_plan</span><span class="tok-bar-wrap"><span class="tok-bar" style="width:27.3%"></span></span><span class="tok-val">12</span></div><div class="tok-row"><span class="tok-label" title="web_search">web_search</span><span class="tok-bar-wrap"><span class="tok-bar" style="width:13.6%"></span></span><span class="tok-val">6</span></div><div class="tok-row"><span class="tok-label" title="view_image">view_image</span><span class="tok-bar-wrap"><span class="tok-bar" style="width:6.8%"></span></span><span class="tok-val">3</span></div></div></details><div class="fine-note">广度看分布不看总数：头部断层＝你的工作流主轴，长尾低频项可按需保留或卸载。</div></div><details class="card appendix"><summary>B · 证据链（2 条 · 悬停指针查看原会话路径）</summary><div class="ev-list"><div class="ev-row"><span class="ev-text">对 AI 的实现方案只回「可以」，未补充约束即放行</span><span class="ptr-chip" title="demo-cx-">demo-cx- ↗</span> <span class="ptr-miss">⚠ 指针未命中</span></div><div class="ev-row ev-last"><span class="ev-text">贴出完整报错并指出自己已经排除的两种可能，再让 AI 继续</span><span class="ptr-chip" title="demo-cx-">demo-cx- ↗</span> <span class="ptr-miss">⚠ 指针未命中</span></div></div></details>
+<div class="footer"><span>本报告运行约 7911 分钟 · 编排 8 个 agent</span><span class="footer-id">aci-report · 2026-08-16 10:10</span></div>
+</div>
+</body></html>

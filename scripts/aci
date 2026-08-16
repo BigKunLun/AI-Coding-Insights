@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+#
+# aci —— 从源码仓库直接跑 ai-coding-insights 的兜底入口。
+#
+# 优先走 uv（能自动建隔离环境、认 pyproject）；机器上没有 uv 就退回系统 python3。
+# 本项目零运行时依赖（纯 stdlib），所以 python3 直跑不需要装任何东西，
+# 唯一的硬门槛是 Python ≥ 3.11——不满足就明确报错，绝不静默失败。
+#
+# 用法：bash scripts/aci <子命令> [参数...]    例：bash scripts/aci --help
+# 脚本自己定位仓库根，在任何目录下调用都一样。
+
+set -euo pipefail
+
+# --- 自定位仓库根（不依赖调用方 cwd）------------------------------------
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+# 顺着符号链接找到真身，避免被 ln -s 到 ~/bin 之后定位错仓库
+while [ -L "$SCRIPT_PATH" ]; do
+    LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+    case "$LINK_TARGET" in
+        /*) SCRIPT_PATH="$LINK_TARGET" ;;
+        *)  SCRIPT_PATH="$(dirname "$SCRIPT_PATH")/$LINK_TARGET" ;;
+    esac
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# 与 pyproject.toml 的 requires-python 同源，改一处要改两处（有测试守着）
+MIN_PY="3.11"
+
+# --- 分支一：有 uv ------------------------------------------------------
+if command -v uv >/dev/null 2>&1; then
+    exec uv run --project "$REPO_ROOT" python -m ai_coding_insights "$@"
+fi
+
+# --- 分支二：退回系统 python3 -------------------------------------------
+if ! command -v python3 >/dev/null 2>&1; then
+    cat >&2 <<EOF
+错误：没找到 uv，也没找到 python3。
+
+请任选一种装法：
+  1) 装 uv（推荐，一条命令自带隔离环境）：
+       curl -LsSf https://astral.sh/uv/install.sh | sh
+  2) 装 Python ${MIN_PY} 或更高版本（macOS: brew install python@3.11）
+EOF
+    exit 1
+fi
+
+# 版本闸门：低于 ${MIN_PY} 直接拦下，别让用户拿到一半的语法错误堆栈
+if ! python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"; then
+    CURRENT_PY="$(python3 -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
+    cat >&2 <<EOF
+错误：系统 python3 版本是 ${CURRENT_PY}，本项目要求 Python ${MIN_PY} 或更高。
+
+请任选一种修法：
+  1) 装 uv，由它自动准备合规的 Python（推荐）：
+       curl -LsSf https://astral.sh/uv/install.sh | sh
+  2) 升级系统 Python 到 ${MIN_PY}+（macOS: brew install python@3.11；Debian/Ubuntu: apt install python3.11）
+     然后把它放进 PATH 的 python3，或直接用：
+       PYTHONPATH="${REPO_ROOT}/src" python3.11 -m ai_coding_insights "\$@"
+EOF
+    exit 1
+fi
+
+# 源码直跑：把 src/ 挂进 PYTHONPATH，无需先 pip install
+export PYTHONPATH="${REPO_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
+exec python3 -m ai_coding_insights "$@"

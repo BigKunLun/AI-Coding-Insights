@@ -1,0 +1,13 @@
+{
+  "status": "first",
+  "lookback_days": 30,
+  "since_date": "2026-07-11",
+  "until_date": "2026-08-10",
+  "last_check_date": null,
+  "days_since_last": null,
+  "message": null,
+  "data_start": "2026-07-17",
+  "truncated": false,
+  "mode": "all",
+  "source": "codex"
+}

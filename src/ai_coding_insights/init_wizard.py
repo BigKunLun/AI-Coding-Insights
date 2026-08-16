@@ -105,13 +105,32 @@ def build_config_toml(selected: list[SourceGroup]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def collect_sources(projects_dir) -> tuple[dict[str, list[RemoteIdentity]], dict[str, int]]:
-    """IO 壳：遍历全部会话（不限窗口——init 看历史全量），按 cwd 计会话数并取 remote。
-    只需 cwd，用 session_cwd 头部短读，不全文件解析（全量历史可能数千个大文件）。"""
+def _iter_cwds(projects_dir, source):
+    """逐会话产出 cwd（只要 cwd，不要别的）。
+
+    claude-code 走 `session_cwd` 头部短读的**快路**：init 看的是历史全量，可能几千个
+    大 transcript，全文件解析会把一次交互式向导拖成分钟级。其余来源没有等价的短读
+    捷径，退回来源自己的 `iter_sessions` 全解析——慢，但正确；宁可慢也不能少扫。
+    """
+    from .sources import CLAUDE_CODE, get_source
+
+    src = source if source is not None else get_source(CLAUDE_CODE)
+    name = getattr(src, "name", src)
+    if name == CLAUDE_CODE:
+        from .cc_source import session_files
+        for path in session_files(projects_dir):
+            yield session_cwd(path)
+        return
+    for parsed in get_source(name).iter_sessions(Path(projects_dir)):
+        yield parsed.cwd
+
+
+def collect_sources(projects_dir, source=None
+                    ) -> tuple[dict[str, list[RemoteIdentity]], dict[str, int]]:
+    """IO 壳：遍历全部会话（不限窗口——init 看历史全量），按 cwd 计会话数并取 remote。"""
     counts: dict[str, int] = {}
     idents: dict[str, list[RemoteIdentity]] = {}
-    for path in sorted(Path(projects_dir).glob("*/*.jsonl")):
-        cwd = session_cwd(path)
+    for cwd in _iter_cwds(projects_dir, source):
         if not cwd:
             continue
         counts[cwd] = counts.get(cwd, 0) + 1

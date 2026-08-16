@@ -291,9 +291,11 @@ def test_families_shape_and_duration_unit():
 
 
 def test_families_duration_missing_and_dirty():
+    # unmeasured=False：时长任何来源都测得到，取不到只是本窗口没数据（见 dur_cell）
     assert _cell(build_view(_profile(), _meta(), _metrics(), None),
                  "节奏投入", "时长 P90") == {"label": "时长 P90", "value": "—",
-                                          "unit": None, "diff": None}
+                                          "unit": None, "diff": None,
+                                          "unmeasured": False}
     dirty = _cell(build_view(_profile(), _meta(), _metrics(duration_p90_min="z"), None),
                   "节奏投入", "时长 P90")
     assert dirty["value"] == "—" and dirty["unit"] is None
@@ -511,6 +513,34 @@ def test_profile与meta与diff不是对象时不炸():
     assert view["session_count"] == 0 and view["projects"] == []
     assert view["landed_ratio_text"] == "80%"
     assert view["diff_note_kind"] == "none"
+
+
+def test_落地率分母为零时不渲染成百分之零():
+    """`git_commit_total`=0 时 `landed_ratio` 这个 property 退化成 0.0（0÷0）。
+
+    照 0% 渲染就是把「窗口内没有可归属的提交、落地锚压根建不起来」说成「做了没落地」——
+    正是本项目定义的错导。真实场景：会话不在 git 仓库里（opencode 实测就是这样），
+    或本人这段时间没往同仓提交。
+    """
+    m = _metrics(git_landed_count=0, git_commit_total=0, landed_ratio=0.0)
+    view = build_view(_profile(), _meta(), m, None)
+    assert view["landed_ratio_text"] == "—", "分母为 0 时不得渲染成 0%"
+    assert view["landed_ratio"] is None
+    # 分母正常时照常出百分比（别把这条守卫改成「永远不出落地率」）
+    正常 = build_view(_profile(), _meta(),
+                    _metrics(git_landed_count=3, git_commit_total=10, landed_ratio=0.3), None)
+    assert 正常["landed_ratio_text"] == "30%"
+
+
+def test_旧格式缺分母字段时仍信任已给的落地率():
+    """分母**整个缺席**是旧 `_aggregate.json`（那时还没有 git 主锚字段）。
+
+    这种情况必须走既有降级链、照常显示，否则历史快照会集体退化成「—」。
+    与上一条的区别只有一个：分母是「明确为 0」还是「根本没有」。
+    """
+    m = _metrics(landed_ratio=0.8)          # 不含 git_commit_total
+    assert "git_commit_total" not in m
+    assert build_view(_profile(), _meta(), m, None)["landed_ratio_text"] == "80%"
 
 
 def test_脏outcome块不炸():

@@ -1,8 +1,17 @@
 # 本机生成的评估报告（个人产物，不进 git）
 aci-report-*.html
 
-# 本地文档/草稿（不进 git）
-docs/
+# 本地文档/草稿（不进 git）。
+# 写 `docs/*` 而不是 `docs/`：git 不会进入被整体排除的目录，父目录一旦被 ignore，
+# 下面几条 `!` 例外全部失效（「无法重新包含被排除目录下的文件」）。
+docs/*
+
+# 推广物料例外：demo 报告与公开 roadmap 是对外物料，必须进仓库（GitHub 上要能点开）
+!docs/demo/
+!docs/roadmap.md
+# demo 报告的文件名撞上了上面的 `aci-report-*.html`（不含斜杠的模式匹配任意层级），
+# 那条是为「本机跑出来的个人报告」设的，这里的假数据 demo 要单独放行。
+!docs/demo/aci-report-*.html
 
 # 视觉伴侣脑暴产物（临时 mockup，不进 git）
 .superpowers/
@@ -13,6 +22,10 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .venv/
+
+# 打包产物（uv build / python -m build）
+/dist/
+/build/
 
 # macOS
 .DS_Store

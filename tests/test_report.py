@@ -1,5 +1,8 @@
 from ai_coding_insights.models import InsightsReport, SessionStats
-from ai_coding_insights.report import render_count_report
+from ai_coding_insights.report import _DIM_COLORS, render_count_report
+
+# 配色从渲染层常量取，别在断言里写死色值——这里要守的是结构与先后序，不是颜色
+_C = _DIM_COLORS["成果"]
 
 
 def test_render_contains_key_facts():
@@ -23,7 +26,11 @@ def test_render_profile_report():
     html = render_profile_report(profile, meta)
     assert html.lstrip().startswith("<!doctype html>")
     assert "L3" in html and "60%" in html              # 姿势分布
-    assert "18" in html and "23" in html               # 成果
+    # 成果：无 metrics 时退到 LLM 的 outcome，落地 18、丢弃 = 23-18 = 5。
+    # **别断言裸的 "23"**——total 本身不直接上报告（只用来算丢弃数），这条断言曾经
+    # 靠 CSS 里的色值 `#b42318` 含子串 "23" 假通过多年，改配色才炸出来。
+    # 短数字串断言一律带上下文，否则测的是十六进制颜色。
+    assert "落地 <span" in html and ">18<" in html and ">5<" in html
     assert "推翻一处实现方案并给约束" in html             # 证据行为级
     assert "ptr-chip" in html and "/p/s.jsonl" not in html  # 指针胶囊渲染，完整路径不泄露
     # XSS 防护：注入 < 被转义
@@ -59,8 +66,8 @@ def test_render_profile_outcome_prefers_hard_metrics():
     # 旧口径 metrics（缺 git 键）→ 退到 transcript 硬证据：落地 30、丢弃 40-30=10。
     # 数字按成果主题色高亮，文案被 span 拆开，按高亮 span 核对硬指标值。
     # 完整片段：导语「落地」+ 高亮 30 +「· 观测丢弃」分隔 + 高亮 10，钉死分隔符与先后序
-    assert ('落地 <span class="n" style="color:#0d9488">30</span> · '
-            '观测丢弃 <span class="n" style="color:#0d9488">10</span>') in html
+    assert (f'落地 <span class="n" style="color:{_C}">30</span> · '
+            f'观测丢弃 <span class="n" style="color:{_C}">10</span>') in html
     # LLM 抄错的 landed=1 不得作为成果落地值出现
     assert "落地 <span" in html and "落地 1" not in html
 

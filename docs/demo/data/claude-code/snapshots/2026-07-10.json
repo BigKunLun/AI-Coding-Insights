@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-07-10T09:12:00+00:00",
+  "window": {
+    "lookback_days": 30
+  },
+  "metrics": {
+    "landed_ratio": 0.52,
+    "commit_count": 39,
+    "landed_count": 30,
+    "git_landed_count": 31,
+    "git_commit_total": 60,
+    "dropped_count": 9,
+    "edit_count": 447,
+    "session_count": 61,
+    "human_input_count": 583,
+    "tool_breadth": 14,
+    "active_days": 15,
+    "token_total": 12050000,
+    "subagent_sessions": 14,
+    "workflow_sessions": 1,
+    "mcp_sessions": 17,
+    "duration_median_min": 22.0,
+    "decision_point_count": 604,
+    "plan_mode_sessions": 5,
+    "turn_p90": 23,
+    "custom_skill_count": 2,
+    "background_sessions": 3,
+    "max_parallel_agents": 3
+  },
+  "posture_distribution": {
+    "L1": 0.27,
+    "L2": 0.38,
+    "L3": 0.26,
+    "L4": 0.09
+  },
+  "posture_rubric": 3,
+  "outcome": {
+    "landed": 31,
+    "total": 40
+  }
+}

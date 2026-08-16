@@ -1,6 +1,9 @@
 import copy
 
-from ai_coding_insights.report import render_profile_report, _fmt_delta
+from ai_coding_insights.report import _DIM_COLORS, render_profile_report, _fmt_delta
+
+# 配色从渲染层常量取，别在断言里写死色值——这里要守的是结构与先后序，不是颜色
+_C = _DIM_COLORS["成果"]
 
 PROFILE = {
     "posture_distribution": {"L1": 0.18, "L2": 0.07, "L3": 0.57, "L4": 0.18},
@@ -215,8 +218,8 @@ def test_dashboard_v5_structured_dimensions():
     assert 'class="dim-card-sub"' in html
     # outcome 仍附落地/丢弃（git 主锚口径：旧口径 metrics 缺 git 键退到 transcript 硬证据）；
     # 完整片段钉死分隔符与先后序：落地 37 ·（分隔）观测丢弃 9，数字各自高亮
-    assert ('落地 <span class="n" style="color:#0d9488">37</span> · '
-            '观测丢弃 <span class="n" style="color:#0d9488">9</span>') in html
+    assert (f'落地 <span class="n" style="color:{_C}">37</span> · '
+            f'观测丢弃 <span class="n" style="color:{_C}">9</span>') in html
 
 
 def test_dashboard_v5_frictions_block():
@@ -276,8 +279,8 @@ def test_dashboard_v5_compat_old_profile():
     assert "摩擦 + 建议" not in html
     # 落地仍渲染（无 metrics → 兜底 LLM 抄值：landed=10、丢弃=total-landed=2）；
     # 完整片段钉死分隔符与先后序：落地 10 ·（分隔）观测丢弃 2，数字各自高亮
-    assert ('落地 <span class="n" style="color:#0d9488">10</span> · '
-            '观测丢弃 <span class="n" style="color:#0d9488">2</span>') in html
+    assert (f'落地 <span class="n" style="color:{_C}">10</span> · '
+            f'观测丢弃 <span class="n" style="color:{_C}">2</span>') in html
 
 
 # ---- Task 7: 六处新板块 ----

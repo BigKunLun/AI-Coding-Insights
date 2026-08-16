@@ -1,0 +1,32 @@
+{"timestamp": "2026-06-04T01:00:00.000Z", "type": "turn_context", "payload": {"turn_id": "t-1", "cwd": "/tmp/repo-b", "workspace_roots": ["/tmp/repo-b"], "model": "gpt-5.5", "effort": "medium"}}
+这不是 JSON
+[1, 2, 3]
+"裸字符串行"
+42
+
+{"timestamp": "2026-06-04T01:00:01.000Z", "type": "response_item"}
+{"timestamp": "2026-06-04T01:00:02.000Z", "type": "response_item", "payload": "payload 不是 dict"}
+{"timestamp": "2026-06-04T01:00:03.000Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<user_instructions>\n占位注入内容\n</user_instructions>"}]}}
+{"timestamp": "2026-06-04T01:00:04.000Z", "type": "response_item", "payload": {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "<permissions instructions>\n占位注入内容\n"}]}}
+{"timestamp": "2026-06-04T01:00:05.000Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": "content 不是 list"}}
+{"timestamp": "2026-06-04T01:00:06.000Z", "type": "event_msg", "payload": {"type": "user_message", "message": null, "images": [], "text_elements": []}}
+{"timestamp": "2026-06-04T01:00:07.000Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "占位真人指令：只在 response_item 通道出现\n"}]}}
+{"timestamp": "2026-06-04T01:00:08.000Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "占位真人指令：两个通道都出现\n"}]}}
+{"timestamp": "2026-06-04T01:00:09.000Z", "type": "event_msg", "payload": {"type": "user_message", "message": "占位真人指令：两个通道都出现\n", "images": [], "text_elements": []}}
+{"timestamp": "2026-06-04T01:00:10.000Z", "type": "response_item", "payload": {"type": "reasoning", "summary": [], "encrypted_content": "ENCRYPTED_PLACEHOLDER"}}
+{"timestamp": "2026-06-04T01:00:11.000Z", "type": "response_item", "payload": {"type": "function_call", "call_id": "call_edge0000000000000001", "arguments": "{}"}}
+{"timestamp": "2026-06-04T01:00:12.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "call_id": "call_edge0000000000000002", "arguments": "这不是合法 JSON"}}
+{"timestamp": "2026-06-04T01:00:13.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "mcp__demo__query", "call_id": "call_edge0000000000000003", "arguments": "{}"}}
+{"timestamp": "2026-06-04T01:00:14.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "search", "namespace": "mcp__atlas", "call_id": "call_edge0000000000000004", "arguments": "{}"}}
+{"timestamp": "2026-06-04T01:00:15.000Z", "type": "response_item", "payload": {"type": "mcp_tool_call", "server": "legacy", "name": "fetch", "call_id": "call_edge0000000000000005"}}
+{"timestamp": "2026-06-04T01:00:16.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "mcp__", "call_id": "call_edge0000000000000006", "arguments": "{}"}}
+{"timestamp": "2026-06-04T01:00:17.000Z", "type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": "很多", "cached_input_tokens": null, "output_tokens": true, "total_tokens": "?"}}}}
+{"timestamp": "2026-06-04T01:00:18.000Z", "type": "event_msg", "payload": {"type": "patch_apply_end", "call_id": "call_edge0000000000000007", "turn_id": "t-1", "success": false, "status": "failed", "changes": {"/tmp/repo-b/failed.md": {"type": "add", "content": "占位失败补丁全文\n"}}, "stdout": "", "stderr": "占位失败原因"}}
+{"timestamp": "2026-06-04T01:00:19.000Z", "type": "event_msg", "payload": {"type": "patch_apply_end", "call_id": "call_edge0000000000000008", "turn_id": "t-1", "success": "true", "status": "completed", "changes": {"/tmp/repo-b/not-bool-success.md": {"type": "add", "content": "占位全文\n"}}}}
+{"timestamp": "2026-06-04T01:00:20.000Z", "type": "event_msg", "payload": {"type": "patch_apply_end", "call_id": "call_edge0000000000000009", "turn_id": "t-1", "success": true, "status": "completed", "changes": "changes 不是 dict"}}
+{"timestamp": "2026-06-04T01:00:21.000Z", "type": "event_msg", "payload": {"type": "patch_apply_end", "call_id": "call_edge0000000000000010", "turn_id": "t-1", "success": true, "status": "completed", "changes": {"/tmp/repo-b/ok.md": {"type": "update", "move_path": null, "unified_diff": "@@ -1 +1 @@\n-占位旧行\n+占位新行\n"}, "docs/rel.md": {"type": "add", "content": "占位全文\n"}, "": {"type": "add", "content": "占位全文\n"}}}}
+{"timestamp": "2026-06-04T01:00:22.000Z", "type": "event_msg", "payload": {"type": "mystery_event", "detail": "未来版本新增的 payload 类型"}}
+{"timestamp": "2026-06-04T01:00:23.000Z", "type": "future_record", "payload": {"type": "whatever"}}
+{"timestamp": 20260604, "type": "event_msg", "payload": {"type": "agent_message", "message": "占位助手消息", "phase": "commentary"}}
+{"timestamp": "2026-06-04T01:00:25.000Z", "type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 1000, "cached_input_tokens": 400, "output_tokens": 50, "reasoning_output_tokens": 10, "total_tokens": 1050}, "last_token_usage": {"input_tokens": 500, "cached_input_tokens": 200, "output_tokens": 20, "reasoning_output_tokens": 5, "total_tokens": 520}, "model_context_window": 258400}}}
+{"timestamp": "2026-06-04T01:00:26.000Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "占位真人指令：只在 response_item 通道出现\n"}]}}

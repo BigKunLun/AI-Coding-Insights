@@ -9,7 +9,8 @@ from .outcome import compute_outcome
 from .git_outcome import repo_outcome, repo_root
 from .profile_input import build_session_input
 from .batch import make_batches
-from .customization import scan_custom_skills, detect_hook_config, compute_customization_signals
+from .customization import (compute_customization_signals, count_project_md_sessions,
+                            detect_hook_config, scan_custom_skills)
 from .snapshot import (save_snapshot, load_latest, load_all, diff_metrics,
                        DEFAULT_SNAPSHOT_DIR, _CORE_KEYS)
 from .calibrate import (REPLAY_WINDOW_DAYS, calibrate,
@@ -17,7 +18,7 @@ from .calibrate import (REPLAY_WINDOW_DAYS, calibrate,
                         replay_snapshot, replay_windows, window_indices)
 from .profile_schema import validate_profile
 from .obs_check import check_obs_coverage, check_posture_counts, sum_posture_counts
-from .evidence_check import extract_turn_uuids, flag_missing_pointers
+from .evidence_check import POINTER_UUID_SOURCES, flag_missing_pointers, turn_uuids_for
 from .run_model import detect_run_model
 from .rolling_log import append_rolling_log
 from .parse_health import compute_parse_health
@@ -25,31 +26,64 @@ from .stage import assemble_posture
 from .report import render_count_report, render_profile_report
 from .view_model import build_view
 from .models import InsightsReport
+from .sources import (CLAUDE_CODE, SOURCE_NAMES, UnknownSourceError, detect_source,
+                      get_source, resolve_root)
 from .timeutil import parse_timestamp
 
 
-def _make_pointer_checker():
+def _resolve_source(args):
+    """本次取数用哪家 harness 的会话。
+
+    显式 `--source` 优先，否则**看触发环境**（在哪个 harness 里被调起就分析哪家，
+    见 `sources.detect_source`）——刻意不去 PATH 上探测用户装了什么：装了不等于在用。
+    """
+    name = getattr(args, "source", None) or detect_source()
+    try:
+        return get_source(name)
+    except UnknownSourceError as exc:
+        # 复用 ConfigError 的出口：main 已统一兜它并打中文提示 + 退出码 2
+        raise ConfigError(str(exc)) from exc
+
+
+def _resolve_projects_dir(args, src) -> Path:
+    """会话数据根：显式 `--projects-dir` 优先，否则取该来源默认根。
+
+    默认值不能写死在 argparse 里——写死就等于把 `~/.claude/projects` 强加给
+    Codex/opencode 用户，扫出 0 个会话还不报错。
+    """
+    return resolve_root(src, getattr(args, "projects_dir", None))
+
+
+def _make_pointer_checker(source_name: str = CLAUDE_CODE):
     """证据指针的 IO 核验器（带 per-file 缓存）：文件存在 + （带 uuid 时）该 turn
     uuid 真在文件里。每个会话文件只读一遍、一次性提取全部 uuid——evidence+highlights
     常 ~10 条指针且集中指向少数大 transcript，逐指针重扫全文件是数量级浪费。
+
+    uuid 的取法按来源分派（`evidence_check.turn_uuids_for`）。该来源**不支持** uuid
+    回看时（返回 None），退化为只核文件存在性——绝不因此把每条指针都判成未命中，
+    那会产出一份「证据全对不上」的假警报报告。
     """
-    cache: dict[str, set[str] | None] = {}   # None = 文件不存在/不可读
+    _MISSING = object()                      # 文件不存在/不可读
+    _NO_UUID_CHECK = object()                # 本来源不支持 uuid 回看，只核文件存在
+    cache: dict[str, object] = {}
+
     def check(path: str, uuid: str | None) -> bool:
         if path not in cache:
             p = Path(path)
             if not p.is_file():
-                cache[path] = None
+                cache[path] = _MISSING
             else:
-                try:
-                    with p.open(encoding="utf-8") as f:
-                        cache[path] = extract_turn_uuids(f)
-                except OSError:
-                    cache[path] = None
-        uuids = cache[path]
-        if uuids is None:
+                uuids = turn_uuids_for(p, source_name)
+                cache[path] = _NO_UUID_CHECK if uuids is None else uuids
+        entry = cache[path]
+        if entry is _MISSING:
             return False
-        return True if uuid is None else uuid in uuids
+        if uuid is None or entry is _NO_UUID_CHECK:
+            return True
+        return uuid in entry
     return check
+
+
 
 
 def _metrics_dict(metrics) -> dict:
@@ -79,11 +113,13 @@ def _cmd_scan(args) -> int:
             # 格式错的 --since 不应抛裸 traceback（main 只兜 ConfigError）
             raise ConfigError(f"--since 需为 YYYY-MM-DD 格式：{args.since!r}") from exc
 
+    src = _resolve_source(args)
+    projects_dir = _resolve_projects_dir(args, src)
     if getattr(args, "emit_batches", None):
-        return _emit_batches(args, cfg, now, since)
+        return _emit_batches(args, cfg, now, since, src, projects_dir)
 
-    sessions = discover_sessions(Path(args.projects_dir), cfg.discovery_rules,
-                                 days, now, since=since)
+    sessions = discover_sessions(projects_dir, cfg.discovery_rules,
+                                 days, now, since=since, source=src)
     stats = [compute_stats(s, cfg.short_turn_max_chars) for s in sessions]
     rep = InsightsReport(generated_at=now.isoformat(), lookback_days=days, sessions=stats,
                          included_projects=sorted({s.cwd for s in stats}),
@@ -110,7 +146,15 @@ def _cmd_scan(args) -> int:
     return 0
 
 
-def _emit_batches(args, cfg, now, since) -> int:
+# 规则层 ↔ LLM 层文件契约的版本号。**改中间产物的结构就要 +1**（加可选字段不用）。
+# 为什么需要它：playbook 装在用户机器上、规则层由 uvx 每次拉最新，两边会各自漂移。
+# 没有版本号时，旧 playbook 配新规则层的表现是「读到的键不存在 → 当空处理 → 安静产出
+# 错报告」；有了它，playbook 第 1 步就能对不上号并要求用户重装——把静默失配换成响亮失败。
+# 真相源在此，playbook 里抄了一份，`tests/test_skill_contract.py` 比对两侧。
+MANIFEST_SCHEMA_VERSION = 2
+
+
+def _emit_batches(args, cfg, now, since, src, projects_dir) -> int:
     snap_dir = Path(getattr(args, "snapshot_dir", None) or DEFAULT_SNAPSHOT_DIR)
     prev = load_latest(dir=snap_dir)
     prev_generated = (prev or {}).get("generated_at")  # 旧格式快照缺键时按无基线降级，不崩
@@ -136,9 +180,12 @@ def _emit_batches(args, cfg, now, since) -> int:
         too_soon_window = decision.to_dict()
         (out_dir / "_window.json").write_text(
             json.dumps(too_soon_window, ensure_ascii=False), encoding="utf-8")
+        # schema_version 在 too_soon 分支也要给：编排端第一件事就是对版本，
+        # 若这条分支不带版本号，它会在「最该早停」的时候反而对不上号。
         print(json.dumps({"status": "too_soon", "batch_count": 0,
                           "message": decision.message,
                           "days_since_last": decision.days_since_last,
+                          "schema_version": MANIFEST_SCHEMA_VERSION,
                           "window": too_soon_window}, ensure_ascii=False))
         return 0
 
@@ -148,18 +195,19 @@ def _emit_batches(args, cfg, now, since) -> int:
     since_date = (now.date() - timedelta(days=args.days)) if args.days else decision.since_date
 
     # 正常路径：检测实际数据起点，与 since_date 比对标注窗口是否被本机清理截断（隐患 E）。
-    data_start = detect_data_start(Path(args.projects_dir))
+    data_start = detect_data_start(projects_dir, source=src)
     window_dict = decision.to_dict()
     window_dict["lookback_days"] = days
     window_dict["since_date"] = since_date.isoformat() if since_date else None
     window_dict["data_start"] = data_start
     window_dict["truncated"] = is_window_truncated(since_date, data_start)
     window_dict["mode"] = cfg.mode  # 取数范围进报告标注：防 mode=all 误跑时静默混入私人项目
+    window_dict["source"] = src.name  # 数据来自哪家 harness：跨来源不可直接比，须进报告标注
     (out_dir / "_window.json").write_text(
         json.dumps(window_dict, ensure_ascii=False), encoding="utf-8")
 
-    sessions = discover_sessions(Path(args.projects_dir), cfg.discovery_rules,
-                                 days, now, since=since)
+    sessions = discover_sessions(projects_dir, cfg.discovery_rules,
+                                 days, now, since=since, source=src)
     stats = [compute_stats(s, cfg.short_turn_max_chars) for s in sessions]
     outcomes = [compute_outcome(s) for s in sessions]
     sessions_input = [build_session_input(se, st, oc)
@@ -179,31 +227,20 @@ def _emit_batches(args, cfg, now, since) -> int:
     repo_outcomes = {root: repo_outcome(root, edited, since_dt)
                      for root, edited in edited_by_root.items()}
 
-    # -- customization 信号扫描 --
-    custom_skills = scan_custom_skills()
+    # -- customization 信号扫描（按来源分派：各家的自建扩展目录与项目约定文件名不同）--
+    custom_skills = scan_custom_skills(source=src.name)
     custom_skill_count = len(custom_skills)
-    # CLAUDE.md：检查各项目 cwd 下的 CLAUDE.md 在窗口内是否被修改
-    claude_md_sessions = 0
-    cutoff_mtime = since_dt
-    seen_cwd = set()
-    for s in sessions:
-        if s.cwd in seen_cwd:
-            continue
-        seen_cwd.add(s.cwd)
-        cmdf = Path(s.cwd) / "CLAUDE.md"
-        if cmdf.is_file():
-            try:
-                mtime = datetime.fromtimestamp(cmdf.stat().st_mtime, tz=timezone.utc)
-                if mtime >= cutoff_mtime:
-                    claude_md_sessions += 1
-            except OSError:
-                pass
+    claude_md_sessions = count_project_md_sessions(sessions, since_dt, source=src.name)
 
     metrics = aggregate_metrics(sessions, stats, outcomes, repo_outcomes=repo_outcomes,
                                  custom_skill_count=custom_skill_count,
-                                 claude_md_sessions=claude_md_sessions)
+                                 claude_md_sessions=claude_md_sessions,
+                                 source=src)
     # 定制化信号聚合（供报告能力盲区使用）
-    hook_config = detect_hook_config()
+    # 必须带 source：hook 探测读的是 CC 的 ~/.claude/settings.json，不传来源就会把
+    # CC 的 hook 配置算到 Codex/opencode 头上——实测踩过：Codex 报告里冒出「已接线
+    # 6 类 hook 事件」，而 Codex 压根没有 hook 机制。
+    hook_config = detect_hook_config(source=src.name)
     customization_signals = compute_customization_signals(custom_skills,
                                                           claude_md_sessions,
                                                           hook_config)
@@ -239,6 +276,12 @@ def _emit_batches(args, cfg, now, since) -> int:
         "window": window_dict,
         "aggregate": agg,
         "mode": cfg.mode,
+        # 来源名：编排端据此挑对应的 playbook 分支（有无子代理 / 该不该提 CC 专属能力），
+        # 也据此把「本报告分析的是哪家会话」写进小结。
+        "source": src.name,
+        # 本来源**能测到**什么（正面声明；反面是 aggregate.unmeasured）。
+        "capabilities": sorted(src.capabilities),
+        "schema_version": MANIFEST_SCHEMA_VERSION,
     }
     print(json.dumps(manifest, ensure_ascii=False))
     return 0
@@ -297,12 +340,14 @@ def _cmd_render_profile(args) -> int:
     # 证据指针确定性核验：LLM 偶发编造路径或拿会话 id 冒充 turn uuid，
     # 指针回看是证据链的可信度承重点。未命中不剔除（行为描述仍可能成立），
     # 报告里明示「⚠ 指针未命中」并在 stderr 出声。
-    profile, ptr_misses = flag_missing_pointers(profile, _make_pointer_checker())
-    for ptr in ptr_misses:
-        print(f"警告：证据指针未命中（已在报告中标注）：{ptr}", file=sys.stderr)
+    # 来源先读出来：指针核验方式按来源分派（各家 turn uuid 形状不同）
     metrics = None
     if args.metrics:
         metrics = json.loads(Path(args.metrics).read_text(encoding="utf-8"))
+    src_name = str((metrics or {}).get("source") or CLAUDE_CODE)
+    profile, ptr_misses = flag_missing_pointers(profile, _make_pointer_checker(src_name))
+    for ptr in ptr_misses:
+        print(f"警告：证据指针未命中（已在报告中标注）：{ptr}", file=sys.stderr)
     # 四档分布（v2 口径）：读全部 obs 聚合 extractor 的逐 turn 语义分档计数
     # （语义判定收在看得见原文的阶段一），AskUserQuestion 答题按协议硬信号
     # 并入 L2，算术组装收在规则层。obs 缺失/不可读不阻断渲染，但必须 stderr
@@ -322,6 +367,11 @@ def _cmd_render_profile(args) -> int:
     mm = metrics or {}
     assembled = assemble_posture(sum_posture_counts(obs_sessions),
                                  mm.get("option_pick_count", 0))
+    if src_name not in POINTER_UUID_SOURCES:
+        # 少了一道核验就得说出来。不说的话，报告里没有 ⚠ 会被读成「指针都核过、都对」，
+        # 而实际是压根没核 —— 这正是「不报错的错报告」。
+        print(f"警告：来源 {src_name} 暂不支持证据指针的 turn 级回看，本次只核了文件存在性",
+              file=sys.stderr)
     profile["posture_distribution"] = assembled
     snap_dir = Path(args.snapshot_dir)
     prev = load_latest(dir=snap_dir)
@@ -342,10 +392,15 @@ def _cmd_render_profile(args) -> int:
                              "agents": args.run_agents}.items() if v}
     # 模型名不收编排端自报（LLM 自报模型 ID 会编造），由规则层从当前 CC 会话
     # transcript 确定性提取；识别不到就整段省略，宁缺勿假。
-    model = detect_run_model(os.environ.get("CLAUDE_CODE_SESSION_ID"),
-                             Path(args.projects_dir))
-    if model:
-        run["model"] = model
+    # 只对 claude-code 来源做：提取逻辑读的是 CC transcript 的 message.model，
+    # 别家格式不同，硬套只会拿到 None 或错值。来源以 metrics 为准（那是本次取数
+    # 的真相源），metrics 缺席时退到触发环境。
+    _src_name = str((metrics or {}).get("source") or "") or detect_source()
+    if _src_name == CLAUDE_CODE:
+        model = detect_run_model(os.environ.get("CLAUDE_CODE_SESSION_ID"),
+                                 _resolve_projects_dir(args, get_source(CLAUDE_CODE)))
+        if model:
+            run["model"] = model
     if run:
         meta["run"] = run
     # stdout 接缝：posture_state / stage_name 取自 build_view——它是渲染同款判定的
@@ -378,7 +433,8 @@ def _cmd_init(args) -> int:
     from .config import DEFAULT_USER_CONFIG
     from .init_wizard import (aggregate_sources, build_config_toml, collect_sources,
                               parse_selection, render_menu)
-    idents, counts = collect_sources(Path(args.projects_dir))
+    src = _resolve_source(args)
+    idents, counts = collect_sources(_resolve_projects_dir(args, src), source=src)
     groups = aggregate_sources(idents, counts)
     if not groups:
         print('未发现任何会话来源；无需配置，零配置即 mode = "all"。')
@@ -409,6 +465,11 @@ def _cmd_init(args) -> int:
     out.write_text(build_config_toml(selected), encoding="utf-8")
     print(out)
     return 0
+
+
+# auto-scan 省掉的 git 主锚测量：既进 unmeasured（渲染打「未测量」），也从快照剔除
+# （防下次 0→真值的假上涨）。两处同一份常量，改一处不会漏另一处。
+_UNMEASURED_GIT = ("git_landed_count", "git_commit_total", "landed_ratio")
 
 
 def _cmd_auto_scan(args) -> int:
@@ -448,6 +509,8 @@ def _cmd_auto_scan(args) -> int:
         now = datetime.now(timezone.utc)
         append_rolling_log(log_file, f"{now.isoformat()} start day={today_str}")
         cfg = load_config(resolve_config_path(args.config, args.plugin_root))
+        src = _resolve_source(args)
+        projects_dir = _resolve_projects_dir(args, src)
 
         # 读上次快照决定窗口（防御：快照缺 generated_at 或格式异常时安全降级）
         prev_snapshot = load_latest(dir=Path(args.snapshot_dir))
@@ -471,40 +534,30 @@ def _cmd_auto_scan(args) -> int:
         else:
             since = now - timedelta(days=days)
 
-        sessions = discover_sessions(Path(args.projects_dir), cfg.discovery_rules,
-                                     days, now, since=since)
+        sessions = discover_sessions(projects_dir, cfg.discovery_rules,
+                                     days, now, since=since, source=src)
         if not sessions:
             append_rolling_log(log_file, f"{now.isoformat()} skip empty-scan (游标不推进)")
             return 0
 
         stats = [compute_stats(s, cfg.short_turn_max_chars) for s in sessions]
         outcomes = [compute_outcome(s) for s in sessions]
-        custom_skills = scan_custom_skills()
+        custom_skills = scan_custom_skills(source=src.name)
         custom_skill_count = len(custom_skills)
-        claude_md_sessions = 0
-        cutoff_mtime = since
-        seen_cwd = set()
-        for s in sessions:
-            if s.cwd in seen_cwd:
-                continue
-            seen_cwd.add(s.cwd)
-            cmdf = Path(s.cwd) / "CLAUDE.md"
-            if cmdf.is_file():
-                try:
-                    mtime = datetime.fromtimestamp(cmdf.stat().st_mtime, tz=timezone.utc)
-                    if mtime >= cutoff_mtime:
-                        claude_md_sessions += 1
-                except OSError:
-                    pass
+        claude_md_sessions = count_project_md_sessions(sessions, since, source=src.name)
 
-        # auto_scan 不做昂贵的 git log，repo_outcomes 按空字典
+        # auto_scan 不做昂贵的 git log，repo_outcomes 按空字典。这三个 git 字段因此是
+        # 「本次没测」而非真值 0，显式声明进 unmeasured——否则报告会把 0 当真值渲染出
+        # 「落地为零」这种错误结论（下面 snap_metrics 的剔除只挡住了快照假趋势那一侧）。
         metrics = aggregate_metrics(sessions, stats, outcomes,
                                      repo_outcomes={},
                                      custom_skill_count=custom_skill_count,
-                                     claude_md_sessions=claude_md_sessions)
+                                     claude_md_sessions=claude_md_sessions,
+                                     source=src,
+                                     extra_unmeasured=_UNMEASURED_GIT)
         metrics_dict = _metrics_dict(metrics)
         # 定制化信号（供报告能力盲区使用）
-        hook_config = detect_hook_config()
+        hook_config = detect_hook_config(source=src.name)
         metrics_dict["customization_signals"] = compute_customization_signals(
             custom_skills, claude_md_sessions, hook_config)
         # 提取健康度金丝雀（版本漂移雷达）：它存在的意义正是守护这条无人值守路径，
@@ -534,17 +587,17 @@ def _cmd_auto_scan(args) -> int:
         # auto-scan 传 repo_outcomes={} 省成本，git 指标实为「本次未测量」而非真值 0。
         # 不把它们以 0 写进快照——否则下次真实报告会把 0→真值当成假上涨（diff 的 None
         # 守卫只对 None 生效，0 不算无基线）。这三个 key 不进 snap_metrics → 下次 prev 缺失 → 不出箭头。
-        _unmeasured_git = {"git_landed_count", "git_commit_total", "landed_ratio"}
         snap_metrics = {k: v for k, v in metrics_dict.items()
-                        if k in _CORE_KEYS and k not in _unmeasured_git}
+                        if k in _CORE_KEYS and k not in _UNMEASURED_GIT}
         # 窗口标注与 emit-batches 同口径：透传 decision 全字段，并补 data_start/truncated
         # 检测（不再硬编码 truncated=False），让快照/报告如实反映本机清理截断。
-        data_start = detect_data_start(Path(args.projects_dir))
+        data_start = detect_data_start(projects_dir, source=src)
         window_dict = window_decision.to_dict()
         window_dict["lookback_days"] = days
         window_dict["data_start"] = data_start
         window_dict["truncated"] = is_window_truncated(window_decision.since_date, data_start)
         window_dict["mode"] = cfg.mode
+        window_dict["source"] = src.name
         save_snapshot(snap_metrics, posture,
                       {"landed": outcome.get("landed"), "total": outcome.get("total")},
                       meta["generated_at"], window_dict,
@@ -617,6 +670,44 @@ def _cmd_reset(args) -> int:
     return 0
 
 
+def _cmd_install(args) -> int:
+    """把 playbook 装到当前 harness 该放的位置（统一安装器）。
+
+    「装到哪一家」同样**跟触发环境走**——在哪个 harness 里跑 install 就装哪家，
+    `--source` 可显式覆盖。`--print` 只预演不落盘（用户该有机会先看清要写哪个文件）。
+    """
+    # 惰性 import：installers 会去查各家 config 布局，装载失败不该拖垮别的子命令
+    from .installers import (ADAPTERS, InstallError, do_install, invocation_hint,
+                             plan_install)
+    from .playbook import PlaybookNotFound, load_playbook
+
+    src = _resolve_source(args)
+    adapter = ADAPTERS.get(src.name)
+    if adapter is None:
+        raise ConfigError(f"来源 {src.name} 还没有安装适配器（可选：{', '.join(ADAPTERS)}）")
+    try:
+        text = load_playbook(getattr(args, "playbook", None))
+    except PlaybookNotFound as exc:
+        raise ConfigError(str(exc)) from exc
+
+    plan = plan_install(text, adapter)
+    if args.print:
+        print(json.dumps(plan, ensure_ascii=False, indent=2))
+        return 0
+    try:
+        written = do_install(text, adapter, force=args.force)
+    except InstallError as exc:
+        # 目标已存在等冲突：报错中止而不是覆盖。用户可能改过自己的 playbook。
+        print(f"安装失败：{exc}", file=sys.stderr)
+        return 2
+    print(f"已安装 {adapter.label} playbook：{written}")
+    if plan.get("degraded"):
+        print("注意：该 harness 无子代理能力，已装的是降级编排版"
+              "（单轮顺序执行，分析深度低于并行版；报告会标注）")
+    print(f"触发方式：在 {adapter.label} 里调用 {invocation_hint(adapter, written)}")
+    return 0
+
+
 def _cmd_calibrate(args) -> int:
     """阈值校准：读本机历史快照，给出各指标分布与当前阈值的分位定位。
 
@@ -650,16 +741,18 @@ def _replay_snapshots(args) -> tuple:
     git 与姿态指标不测（见 `REPLAY_UNMEASURED`），如实报无样本而不是填 0。
     """
     cfg = load_config(resolve_config_path(args.config, args.plugin_root))
+    src = _resolve_source(args)
+    projects_dir = _resolve_projects_dir(args, src)
     now = datetime.now(timezone.utc)
     win_days = max(1, int(args.replay_window or REPLAY_WINDOW_DAYS))
     step = args.replay_step if args.replay_step else win_days
     # 回看范围要足够覆盖本机全部 transcript：CC 默认只留 30 天，但用户可能调大过
     # cleanupPeriodDays，故按实际最早数据点定，取不到就退回一个宽口径上限。
-    data_start = detect_data_start(Path(args.projects_dir))
+    data_start = detect_data_start(projects_dir, source=src)
     first_dt = parse_timestamp(data_start) if data_start else None
     lookback = max(win_days, (now - first_dt).days + 1 if first_dt else 365)
-    sessions = discover_sessions(Path(args.projects_dir), cfg.discovery_rules,
-                                 lookback, now)
+    sessions = discover_sessions(projects_dir, cfg.discovery_rules,
+                                 lookback, now, source=src)
     last_days = [d.date() if (d := parse_timestamp(s.last_ts)) else None
                  for s in sessions]
     known = [d for d in last_days if d is not None]
@@ -674,7 +767,7 @@ def _replay_snapshots(args) -> tuple:
         if not idx:
             continue    # 空窗口不产样本：0 会话的「量级 0」是空窗不是低用量，混进分布即掺假
         m = aggregate_metrics([sessions[i] for i in idx], [stats[i] for i in idx],
-                              [outcomes[i] for i in idx], repo_outcomes={})
+                              [outcomes[i] for i in idx], repo_outcomes={}, source=src)
         snaps.append(replay_snapshot(until, _metrics_dict(m)))
     return snaps, {"windows": len(snaps), "window_days": win_days, "step_days": step,
                    "overlapping": step < win_days,
@@ -691,8 +784,21 @@ def build_parser():
     """
     ap = argparse.ArgumentParser(prog="ai_coding_insights")
     sub = ap.add_subparsers(dest="cmd")
+
+    def add_source_args(p, with_dir=True):
+        """来源两参数（多 harness 承重）。
+
+        `--source` 缺省 None 而非 "claude-code"：None 才走 `detect_source()`
+        「跟触发环境走」；写死默认值等于把 CC 强加给所有人。
+        `--projects-dir` 缺省同理为 None，运行时按来源解析——argparse 里写死
+        `~/.claude/projects` 会让 Codex/opencode 扫出 0 个会话还不报错。
+        """
+        p.add_argument("--source", default=None, choices=SOURCE_NAMES)
+        if with_dir:
+            p.add_argument("--projects-dir", default=None)
+
     sc = sub.add_parser("scan")
-    sc.add_argument("--projects-dir", default=str(Path.home()/".claude"/"projects"))
+    add_source_args(sc)
     sc.add_argument("--config", default=None)
     sc.add_argument("--plugin-root", default=None)
     sc.add_argument("--days", type=int, default=None)
@@ -706,13 +812,15 @@ def build_parser():
     vo.add_argument("--batches", required=True)
     vo.add_argument("--obs-glob", required=True)
     it = sub.add_parser("init")
-    it.add_argument("--projects-dir", default=str(Path.home()/".claude"/"projects"))
+    add_source_args(it)
     it.add_argument("--out", default=None)
     rp = sub.add_parser("render-profile")
     rp.add_argument("--profile", required=True)
     # 缺省时落当前目录 aci-report-<日期>.html——日期由规则层算，不让 LLM 填
     rp.add_argument("--out", default=None)
-    rp.add_argument("--projects-dir", default=str(Path.home()/".claude"/"projects"))
+    # render-profile 不注册 --source：本次取数的来源以 --metrics 里的 `source` 字段为准
+    # （那是取数时写下的事实），再从环境重判一次只会引入两处真相源。
+    rp.add_argument("--projects-dir", default=None)
     rp.add_argument("--days", type=int, default=None)
     rp.add_argument("--session-count", type=int, default=0)
     rp.add_argument("--project", action="append")
@@ -729,7 +837,7 @@ def build_parser():
     au.add_argument("--out-dir", required=True)
     au.add_argument("--config", default=None)
     au.add_argument("--plugin-root", default=None)
-    au.add_argument("--projects-dir", default=str(Path.home()/".claude"/"projects"))
+    add_source_args(au)
     au.add_argument("--days", type=int, default=None)
     au.add_argument("--snapshot-dir", default=str(DEFAULT_SNAPSHOT_DIR))
     au.add_argument("--state-dir", default=None)   # lock + 滚动日志目录；缺省 ~/.ai-coding-insights
@@ -740,12 +848,17 @@ def build_parser():
     ca.add_argument("--replay", action="store_true")
     ca.add_argument("--replay-window", type=int, default=REPLAY_WINDOW_DAYS)
     ca.add_argument("--replay-step", type=int, default=None)
-    ca.add_argument("--projects-dir", default=str(Path.home()/".claude"/"projects"))
+    add_source_args(ca)
     ca.add_argument("--config", default=None)
     ca.add_argument("--plugin-root", default=None)
     rs = sub.add_parser("reset")
     rs.add_argument("--state-dir", default=str(Path.home() / ".ai-coding-insights"))
     rs.add_argument("--dry-run", action="store_true")
+    ins = sub.add_parser("install")   # 统一安装器：把 playbook 装到当前 harness 的位置
+    add_source_args(ins, with_dir=False)
+    ins.add_argument("--print", action="store_true")   # 只预演落点，不写盘
+    ins.add_argument("--force", action="store_true")   # 覆盖已存在的 playbook
+    ins.add_argument("--playbook", default=None)       # 调试用：指定 playbook 正文文件
     return ap, sub
 
 
@@ -773,6 +886,8 @@ def main(argv=None) -> int:
             return _cmd_reset(args)
         if args.cmd == "calibrate":
             return _cmd_calibrate(args)
+        if args.cmd == "install":
+            return _cmd_install(args)
         # 默认 / "scan"：向后兼容（无子命令时按 scan 解析）
         if args.cmd is None:
             args = sc.parse_args(raw)

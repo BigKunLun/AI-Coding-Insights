@@ -1,0 +1,53 @@
+# 全量测试闸门。三家 harness 的脱敏 fixtures 都在 tests/fixtures 下，
+# parser / 指标口径 / 跨层契约在这里跑同等覆盖（spec 第 3 节第 5 条）。
+#
+# 为什么要矩阵跑多个 Python：pyproject 声明 requires-python >=3.11 且 classifiers
+# 列了 3.11/3.12/3.13——只在一个版本上跑绿，那三行声明就是没人验证过的承诺。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: 装 Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: 全量测试
+        # 测试必须是 hermetic 的：CI runner 上没有 ~/.claude、~/.codex、opencode.db，
+        # 任何一条用例若偷偷依赖真实本机数据，会在这里露馅（本地跑绿、CI 红）。
+        run: uv run --python ${{ matrix.python-version }} pytest -q
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: 构 wheel 并检查 playbook 被打进去
+        # playbook 靠 pyproject 的 force-include 搬进 wheel；漏了的话 uvx 场景
+        # `install` 会找不到 playbook 正文——本地开发永远发现不了（仓库树里有那份）。
+        run: |
+          uv build
+          uv run python - <<'PY'
+          import pathlib, zipfile
+          wheel = sorted(pathlib.Path("dist").glob("*.whl"))[-1]
+          names = zipfile.ZipFile(wheel).namelist()
+          assert "ai_coding_insights/playbook/PLAYBOOK.md" in names, \
+              f"wheel 里没有 playbook：{[n for n in names if 'playbook' in n]}"
+          print(f"{wheel.name} 打包正常，共 {len(names)} 个条目")
+          PY

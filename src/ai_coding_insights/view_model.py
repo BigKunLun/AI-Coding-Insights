@@ -15,7 +15,13 @@
 import math
 
 from .capabilities import unused_capabilities
+from .evidence_check import POINTER_UUID_SOURCES
+from .sources import CLAUDE_CODE, UnknownSourceError, get_source
 from .stage import decide_stage, diagnose_posture, normalize_posture
+
+# 「本来源测不到」的统一显示文本。刻意与「—」（有这个指标但这次取不到数）区分：
+# 前者是能力边界（这家 harness 没这个概念），后者是数据缺失，两者对用户的含义完全不同。
+UNMEASURED_TEXT = "未测量"
 
 # 雷达图满刻度（与 stage.py 阶段阈值无关，仅控制可视化拉伸）：
 RADAR_BREADTH_FULL = 35.0      # 工具广度 35 种打满（≈内置高杠杆能力全集的量级上限）
@@ -41,6 +47,29 @@ _SCOPE_LABELS = {
     "all": "个人模式（全部本机会话）",
     "include": "团队模式（仅配置纳入的项目）",
 }
+
+# 未测量字段 → 给用户看的中文名。只登记会出现在报告里的字段；未登记的直接透出字段名
+# （宁可露出个英文标识符，也不要把它悄悄从 caveat 里漏掉）。
+_METRIC_LABELS = {
+    "tool_breadth": "工具广度", "tool_session_counts": "各工具使用会话数",
+    "subagent_sessions": "SubAgent 会话", "max_parallel_agents": "真并行峰值",
+    "parallel_agent_turns": "真并行轮次", "workflow_sessions": "Workflow 会话",
+    "mcp_sessions": "MCP 会话", "mcp_server_counts": "MCP 服务器分布",
+    "skill_counts": "技能使用会话数", "skill_total_counts": "技能调用次数",
+    "plan_mode_sessions": "计划模式会话", "plan_mode_count": "计划模式次数",
+    "thinking_block_count": "深度推理块", "thinking_sessions": "深度推理会话",
+    "background_task_count": "后台委托", "background_sessions": "后台委托会话",
+    "option_pick_count": "选项应答数", "token_usage": "Token 明细",
+    "token_total": "Token 总量", "git_landed_count": "落地提交",
+    "git_commit_total": "提交总数", "landed_ratio": "落地率",
+    "commit_count": "会话内提交", "landed_count": "会话内落地", "dropped_count": "观测丢弃",
+    "edit_count": "编辑数", "custom_skill_count": "自建技能数",
+    "claude_md_sessions": "项目约定文件改动",
+}
+
+
+def metric_label(field: str) -> str:
+    return _METRIC_LABELS.get(field, field)
 
 # (中文行名, key, 形态)。计数类（per_session）按「次/会话」密度呈现：
 # 前后半段会话数往往悬殊（一段可能是另一段的数倍），原始计数对比只反映体量差，
@@ -235,6 +264,32 @@ def token_items(token_usage: dict | None) -> list[tuple[str, float]] | None:
     return items
 
 
+def fold_unmeasured(families: list[dict]) -> tuple[list[dict], list[dict]]:
+    """把「未测量」的指标格从主网格摘出去，返回 `(保留的族, 折叠项)`。
+
+    为什么折叠而不是照常显示：Codex 报告 16 格里 7 格是「未测量」，44% 的版面
+    是空的，第一观感变成「这工具对我没用」，而不是「我的工具链缺这些能力」。
+    摘出去之后主网格全是实数，未测量项进折叠区块——**位置变了，信息一条不少**。
+
+    「未测量 ≠ 0」在这里仍然成立：折叠项保留原样（value 仍是「未测量」），
+    绝不改写成 0 或「—」。整族被摘空则连族头一起去掉，不留空壳。
+
+    兜底：真出现「一格都测不到」时原样退回不折叠——空白的指标区无从解释，
+    满屏「未测量」至少自证了原因。
+    """
+    kept: list[dict] = []
+    folded: list[dict] = []
+    for fam in families:
+        alive = [c for c in fam["cells"] if not c.get("unmeasured")]
+        folded.extend({**c, "family": fam["name"]}
+                      for c in fam["cells"] if c.get("unmeasured"))
+        if alive:
+            kept.append({**fam, "cells": alive})
+    if not kept:
+        return families, []
+    return kept, folded
+
+
 def build_view(profile: dict, meta: dict, metrics: dict | None = None,
                diff: dict | None = None) -> dict:
     """画像数据 → 视图模型（纯函数，不改入参、不碰 IO、不出 HTML）。
@@ -269,11 +324,54 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
 
     m = metrics or {}
 
+    # ---- 来源与「未测量」字段集（多 harness 承重）----
+    # `unmeasured` 由规则层按来源能力算定（sources.unmeasured_fields）并写进
+    # _aggregate.json。命中的字段一律显示「未测量」而非 0/「—」——把 Codex 里根本
+    # 不存在的 Workflow 渲染成「0 次」，用户读到的是「你没用过」这个错误结论。
+    _um = m.get("unmeasured")
+    unmeasured = frozenset(str(x) for x in _um) if isinstance(_um, list) else frozenset()
+    source_name = str(m.get("source") or CLAUDE_CODE)
+    try:
+        source_label = get_source(source_name).label
+    except UnknownSourceError:
+        # 快照/中间产物来自更新版本、含本版不认识的来源名：如实透出原名，不猜、不静默
+        source_label = source_name
+
+    # 能力集的正面声明（能力盲区据它判「这家有没有这个概念」）。
+    # 键缺失时**先按来源名回填**，而不是直接退到「全集」：退全集等于对 Codex 用户
+    # 报一串它压根没有的能力盲区（「你没用过 Workflow」），是典型的不报错、只安静
+    # 产出错误建议。只有来源也不认识（真·旧文件）才退全集 = claude-code 行为不变。
+    _caps = m.get("capabilities")
+    if isinstance(_caps, list):
+        source_caps = frozenset(str(c) for c in _caps)
+    else:
+        try:
+            source_caps = frozenset(get_source(source_name).capabilities)
+        except UnknownSourceError:
+            source_caps = None
+
+    def um(key: str) -> bool:
+        return key in unmeasured
+
     # ---- 核心指标取值（metrics 缺失时按要求兜底到 outcome，再无则 None→"—"）----
     # 成果类数字统一「硬指标优先、LLM outcome 兜底」：落地数/提交数与奖励挂钩，
     # 必须以可独立验证的 metrics 为准，LLM 转抄值只作缺数时的降级显示。
     # 全部经 first_num/safe_num：脏值等同缺数，继续沿降级链往下走而不是就地炸掉。
-    landed_ratio = first_num(m.get("landed_ratio"), o_ratio if o_total else None)
+    # 落地率的分母是「窗口内同仓本人提交总数」。分母为 0 时 `landed_ratio` 这个
+    # property 退化成 0.0，但那是 0÷0 的字面值，**不是**「做了没落地」——
+    # 窗口内根本没有可归属的提交（会话不在 git 仓库里、或本人这段时间没提交）。
+    # 照 0% 渲染就是把「锚点缺位」说成「成果为零」，属本项目定义的错导。
+    # 故此处先判分母：分母不可用就让整条降级链走到 None → 渲染成「—」。
+    # 只在分母**明确存在且为 0** 时才抑制：分母整个缺席是旧格式 _aggregate.json
+    # （那时还没有 git 主锚字段），那种情况仍照既有降级链信任已给的 landed_ratio，
+    # 否则老快照会集体退化成「—」。
+    _denom = safe_num(m.get("git_commit_total"))
+    _ratio_degenerate = _denom is not None and _denom <= 0
+    # 分母明确为 0 时**整条降级链一并掐掉**，不许退到 LLM 抄来的 outcome 比率——
+    # 那等于用一个更不可靠的来源，把刚判定为「测不出来」的数字又填回去。
+    landed_ratio = (None if _ratio_degenerate
+                    else first_num(m.get("landed_ratio"),
+                                   o_ratio if o_total else None))
     edit_count = safe_num(m.get("edit_count"))
     # git 主锚口径：落地数取 git_landed_count。降级链：旧口径 metrics（缺 git 键，
     # 如旧 _aggregate）退到 transcript 硬证据（landed_count 经 HEAD 验证，是 git 落地
@@ -296,10 +394,13 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
     posture_diag = (None if metrics is None else diagnose_posture(
         pd, safe_int(m.get("decision_point_count")) or 0,
         safe_int(m.get("plan_mode_sessions")) or 0,
-        safe_int(m.get("thinking_sessions")) or 0))
+        safe_int(m.get("thinking_sessions")) or 0,
+        unmeasured=unmeasured))
     posture_state = posture_diag["state"] if posture_diag else None
-    # 阶段判定只算一次：横幅大字 / 判据卡 / cli stdout 共用同一结果
-    stage = None if metrics is None else decide_stage(m)
+    # 阶段判定只算一次：横幅大字 / 判据卡 / cli stdout 共用同一结果。
+    # unmeasured 命中的判据会被跳过并记进 stage["skipped"]，档位随之标为不可比——
+    # 门变松的代价必须显式呈现，不能悄悄抬档。
+    stage = None if metrics is None else decide_stage(m, unmeasured=unmeasured)
 
     def diff_of(key: str):
         """取该指标的同比 dict；无 diff / 键缺失 / 脏值 → None。"""
@@ -310,27 +411,41 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
     def dur_cell(label, v):
         """时长中位数格：None/脏值→「—」无单位，有值→整数 + min 单位。"""
         n = safe_num(v)
+        # `unmeasured` 键所有格子都带，形状统一（fold_unmeasured 才能一视同仁地筛）。
+        # 时长恒可测：任何来源都有时间戳，取不到只是本窗口没数据，不是测不到。
         if n is not None:
-            return {"label": label, "value": str(round(n)), "unit": "min", "diff": None}
-        return {"label": label, "value": "—", "unit": None, "diff": None}
+            return {"label": label, "value": str(round(n)), "unit": "min",
+                    "diff": None, "unmeasured": False}
+        return {"label": label, "value": "—", "unit": None,
+                "diff": None, "unmeasured": False}
 
-    def cell(label, value, diff_key=None):
+    def cell(label, value, diff_key=None, unmeasured_key=None):
+        """指标格。unmeasured_key 命中「本来源测不到」时值改显「未测量」并**抹掉同比**——
+        同比拿 0 跟上次真值比会画出一个凭空的↓箭头，那是纯造谣。"""
+        if unmeasured_key and um(unmeasured_key):
+            return {"label": label, "value": UNMEASURED_TEXT, "unit": None,
+                    "diff": None, "unmeasured": True}
         return {"label": label, "value": value, "unit": None,
-                "diff": diff_of(diff_key) if diff_key else None}
+                "diff": diff_of(diff_key) if diff_key else None, "unmeasured": False}
 
     def mcell(label, key, diff_key=None):
-        """计数格：值经 safe_num，取不到数出「—」（不填 0，0 是实测真值）。"""
-        return cell(label, num_text(safe_num(m.get(key))), diff_key)
+        """计数格：值经 safe_num，取不到数出「—」（不填 0，0 是实测真值）。
+        字段进了 unmeasured 则出「未测量」——那种 0 不是真值。"""
+        return cell(label, num_text(safe_num(m.get(key))), diff_key, unmeasured_key=key)
+
+    def mtext(key: str, text: str) -> str:
+        """给横幅/代表行用的文本降级：字段测不到就出「未测量」。"""
+        return UNMEASURED_TEXT if um(key) else text
 
     tb = safe_num(m.get("tool_breadth"))
     tp90 = safe_num(m.get("turn_p90"))
-    landed_ratio_text = pct_text(landed_ratio)
+    landed_ratio_text = mtext("landed_ratio", pct_text(landed_ratio))
 
     # ---- 横幅四数 = 四维代表值 ----
     hero_nums = [
         {"value": landed_ratio_text, "label": "成果 · 落地率"},
         {"value": posture_state if posture_diag else "—", "label": "姿态健康"},
-        {"value": num_text(tb), "label": "水平 · 工具广度"},
+        {"value": mtext("tool_breadth", num_text(tb)), "label": "水平 · 工具广度"},
         {"value": num_text(tp90), "label": "深度 · P90 轮次/会话"},
     ]
 
@@ -341,10 +456,14 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
     token_usage = token_usage if isinstance(token_usage, dict) else {}
     families = [
         {"name": "产出落地", "cells": [
-            cell("落地提交", num_text(safe_int(git_landed)), "git_landed_count"),
-            cell("提交总数", num_text(git_commit_total), "git_commit_total"),
-            cell("观测丢弃", num_text(safe_int(dropped)), "dropped_count"),
-            cell("编辑数", num_text(edit_count), "edit_count"),
+            cell("落地提交", num_text(safe_int(git_landed)), "git_landed_count",
+                 unmeasured_key="git_landed_count"),
+            cell("提交总数", num_text(git_commit_total), "git_commit_total",
+                 unmeasured_key="git_commit_total"),
+            cell("观测丢弃", num_text(safe_int(dropped)), "dropped_count",
+                 unmeasured_key="dropped_count"),
+            cell("编辑数", num_text(edit_count), "edit_count",
+                 unmeasured_key="edit_count"),
         ]},
         {"name": "协作编排", "cells": [
             mcell("SubAgent 会话", "subagent_sessions", "subagent_sessions"),
@@ -368,6 +487,7 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
             dur_cell("时长 P90", m.get("duration_p90_min")),
         ]},
     ]
+    families, unmeasured_cells = fold_unmeasured(families)
 
     # ---- 姿势分布：图例占比 + 大堆叠条分段 ----
     total_pd = sum(pct(t) for t in _POSTURE_CODES) or 1.0
@@ -408,11 +528,17 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
         return str(block.get("headline") or block.get("summary") or "")
 
     # 成果代表行附「落地 X · 观测丢弃 Y」（git 主锚口径）。与横幅同源：硬指标优先。
-    landed_disp = num_text(safe_int(git_landed))
-    dropped_disp = num_text(safe_int(dropped))
-    outcome_desc = f"落地 {landed_disp} · 观测丢弃 {dropped_disp}"
-    if headline(outcome):
-        outcome_desc = f"{headline(outcome)} · {outcome_desc}"
+    # 测不到的那一半**整段不写**，而不是写「未测量」——这一行是一句话里的两个数，
+    # 塞个「未测量」进去既拗口又是第三次重复（caveat 卡片、折叠区已各说过一次）。
+    # 曾经的 bug：这里绕过降级把测不到的观测丢弃写成 0，旁边解释又说「不是 0」，
+    # 同一份报告自相矛盾——比少写一个数伤可信度得多。
+    landed_disp = UNMEASURED_TEXT if um("git_landed_count") else num_text(safe_int(git_landed))
+    dropped_disp = UNMEASURED_TEXT if um("dropped_count") else num_text(safe_int(dropped))
+    _parts = ([] if um("git_landed_count") else [f"落地 {landed_disp}"]) + \
+             ([] if um("dropped_count") else [f"观测丢弃 {dropped_disp}"])
+    # 两个数都测不到时整段为空，此处不能留下孤零零的分隔点
+    outcome_nums = " · ".join(_parts)
+    outcome_desc = " · ".join([headline(outcome)] + _parts if headline(outcome) else _parts)
     dim_rows = [
         {"name": "姿势", "value": posture_state if posture_diag else "—", "unit": "姿态",
          "desc": (posture_diag["reason"] if posture_diag
@@ -427,6 +553,10 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
         gaps = stage.get("gaps") or []
         stage_crit_note = (f"{cn_num(len(stage.get('criteria') or []))}项判据全部达标"
                            if not gaps else f"距下一档还差 {len(gaps)} 项判据")
+        # 有判据被跳过就必须写在同一句里：读者看到「全部达标」时得知道达标的是几项、
+        # 少看了哪几项，否则跨来源的档位会被当成同一把尺来比。
+        if stage.get("skipped"):
+            stage_crit_note += f"（{len(stage['skipped'])} 项本来源测不到，已跳过）"
     else:
         stage_crit_note = ""
 
@@ -460,6 +590,45 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
     caps_metrics = (None if metrics is None
                     else {**m,
                           "max_parallel_agents": safe_num(m.get("max_parallel_agents")) or 0})
+
+    # ---- 来源与降级 caveat（显式断点；静默劣化是本项目定义的最危险故障）----
+    # 每条都必须在报告里露面：读者得知道这份报告的尺子是哪把、少量了什么、
+    # 编排是不是走了降级版。缺任何一条，跨来源的数字就会被当成同一把尺来比。
+    # 每条是 {"text": 一句结论, "detail": 可展开的明细或 None}。
+    # 结论必须置顶可见（它决定下面所有数字怎么读），**明细可以收起**——把十几个
+    # 字段名摊在首屏三行，读者跳过整张卡片的概率比点开一次还高。
+    source_notes = []
+    if unmeasured:
+        names = "、".join(metric_label(f) for f in sorted(unmeasured))
+        source_notes.append({
+            "text": f"{len(unmeasured)} 项指标在 {source_label} 会话记录里没有对位概念，"
+                    f"报告中标为「未测量」，请勿读作 0",
+            "detail": names,
+        })
+    if stage is not None and stage.get("skipped"):
+        source_notes.append({
+            "text": f"成熟度档位有 {len(stage['skipped'])} 项判据本来源测不到、已跳过，"
+                    f"档位与其他来源不直接可比",
+            "detail": "；".join(stage["skipped"]),
+        })
+    # 编排降级由编排端自报（meta.run.degraded）：无子代理的 harness 走单轮顺序版，
+    # 分析深度低于并行版，必须让用户知道，不能只在结论上不声不响地缩水。
+    run_meta = meta.get("run")
+    run_meta = run_meta if isinstance(run_meta, dict) else {}
+    degraded = bool(run_meta.get("degraded"))
+    if degraded:
+        source_notes.append({
+            "text": "本次为降级编排（当前 harness 无子代理能力）：分档与专家分析由单轮"
+                    "顺序完成，覆盖深度低于并行版",
+            "detail": None,
+        })
+    if metrics is not None and source_name not in POINTER_UUID_SOURCES:
+        # 没核过就不能让「没有 ⚠ 标记」被读成「都核过、都对」
+        source_notes.append({
+            "text": f"{source_label} 的会话记录暂不支持证据指针的 turn 级回看，"
+                    "本次只核了文件存在性",
+            "detail": "证据条目未出现「⚠ 指针未命中」不等于指针已逐条核实",
+        })
     return {
         # 姿势
         "posture_distribution": pd,
@@ -485,6 +654,9 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
         "outcome_desc": outcome_desc,
         "landed_disp": landed_disp,
         "dropped_disp": dropped_disp,
+        # 成果卡片脚注用的「落地 X · 观测丢弃 Y」——与代表行同源，测不到的那半段
+        # 已在此摘掉。两处各拼一次就会漏（曾漏过：代表行改了，卡片还写着「未测量」）。
+        "outcome_nums": outcome_nums,
         # 四维
         "radar_labels": ["姿势", "水平", "深度", "成果"],
         "radar_axes": [axis_posture, axis_breadth, axis_depth, axis_outcome],
@@ -492,6 +664,10 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
         # 横幅 / 指标明细
         "hero_nums": hero_nums,
         "families": families,
+        # 主网格摘出去的未测量格（含所属族名），由 report 渲染成折叠区块。
+        # 与下面的 `unmeasured` 不是一回事：那是**全部**未测量字段（含不上网格的），
+        # 供置顶的来源口径卡片列举；这里只是网格里被藏起来的那几格。
+        "unmeasured_cells": unmeasured_cells,
         "diff_note_kind": diff_note_kind,
         "diff_summary": diff_summary,
         # 附属派生
@@ -499,7 +675,14 @@ def build_view(profile: dict, meta: dict, metrics: dict | None = None,
         "timeline_bars": timeline_bars(m.get("daily")),
         "token_items": token_items(m.get("token_usage")),
         "capability_gaps": (None if metrics is None else unused_capabilities(
-            tool_counts, customization_signals=caps_cs, metrics=caps_metrics)),
+            tool_counts, customization_signals=caps_cs, metrics=caps_metrics,
+            capabilities=source_caps)),
+        # 来源口径（多 harness）：报告须标明这份数据的尺子是哪把、少量了什么
+        "source": source_name,
+        "source_label": source_label,
+        "unmeasured": sorted(unmeasured),
+        "source_notes": source_notes,
+        "degraded": degraded,
         # meta 派生
         # mode 脏值可能不可哈希（dict/list 直接把 .get 炸成 TypeError），先卡成字符串
         "scope_label": _SCOPE_LABELS.get(str(window.get("mode", "")), ""),

@@ -1,0 +1,22 @@
+{
+  "sessions": [
+    {
+      "session_id": "demo-cc-0001",
+      "posture_counts": {
+        "L1": 62,
+        "L2": 104,
+        "L3": 91,
+        "L4": 33
+      }
+    },
+    {
+      "session_id": "demo-cc-0002",
+      "posture_counts": {
+        "L1": 58,
+        "L2": 106,
+        "L3": 89,
+        "L4": 37
+      }
+    }
+  ]
+}

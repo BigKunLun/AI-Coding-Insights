@@ -146,30 +146,72 @@ def _stages(t: StageThresholds):
     ]
 
 
+# 定级值键 ← 它依赖的 aggregate 字段。合成信号（depth_signal / advanced_orchestration）
+# 取多个字段的 max/计数，只有**全部**成分都测不到才算这条判据无从判起——
+# 少一个成分仍能给出下界，不该整条弃判。
+_STAGE_VALUE_SOURCES: dict[str, tuple[str, ...]] = {
+    "active_days": ("active_days",),
+    "human_input_count": ("human_input_count",),
+    "tool_breadth": ("tool_breadth",),
+    "depth_signal": ("subagent_sessions", "plan_mode_sessions"),
+    "advanced_orchestration": ("max_parallel_agents", "background_sessions",
+                               "custom_skill_count"),
+    "git_landed_count": ("git_landed_count",),
+}
+
+
+def unjudgeable_keys(unmeasured) -> frozenset[str]:
+    """哪些定级值键因来源测不到而**无从判起**（纯函数）。
+
+    「未测量 ≠ 0」在档位这一层的落点：Codex 里没有 Workflow / 子代理概念，
+    `subagent_sessions` 恒 0 —— 若照旧当真值过门，Codex 用户会被这条判据永久钉死在
+    精通期以下，档位读数变成「你用的是哪个工具」而不是「你用得怎么样」。
+    """
+    miss = set(unmeasured or ())
+    return frozenset(key for key, fields in _STAGE_VALUE_SOURCES.items()
+                     if fields and all(f in miss for f in fields))
+
+
 def decide_stage(metrics: dict,
-                 thresholds: StageThresholds = DEFAULT_STAGE_THRESHOLDS) -> dict:
-    """绝对值闸门式成熟度定级。返回 stage/name/criteria/gaps/values；
-    values 为 _stage_values 的实际值（渲染层按 key 取值，不做文案匹配）。"""
+                 thresholds: StageThresholds = DEFAULT_STAGE_THRESHOLDS,
+                 unmeasured=()) -> dict:
+    """绝对值闸门式成熟度定级。返回 stage/name/criteria/gaps/values/skipped/comparable；
+    values 为 _stage_values 的实际值（渲染层按 key 取值，不做文案匹配）。
+
+    *unmeasured*：本来源测不到的 aggregate 字段名（`sources.unmeasured_fields` 算定）。
+    命中的判据**跳过**（不参与过门），并如实记进 `skipped`、把 `comparable` 置 False——
+    跳过会让门变松，这个代价必须在报告里明说，不能悄悄抬档。
+    """
     v = _stage_values(metrics or {}, thresholds)
+    skip = unjudgeable_keys(unmeasured)
     stages = _stages(thresholds)
+
+    def _ok(key, pred) -> bool:
+        return True if key in skip else pred(v)
+
     matched = len(stages) - 1
     # 档位单调蕴含：判第 i 档成立 = 满足本档门「且」满足所有更低档的门
     # （stages 从高到低，i 以下即 stages[i:]）。根治高档不蕴含低档门导致的越级。
     for i, _ in enumerate(stages):
-        if all(pred(v)
+        if all(_ok(k, pred)
                for _, _, lower in stages[i:]
-               for _, _, pred in lower):
+               for _, k, pred in lower):
             matched = i
             break
     num, name, conds = stages[matched]
     gaps = []
     if matched > 0:
         gaps = [{"desc": d, "key": k}
-                for d, k, pr in stages[matched - 1][2] if not pr(v)]
-    criteria = ([{"desc": d, "key": k} for d, k, _ in conds]
-                or [{"desc": "未达进阶期条件（兜底档）", "key": None}])
+                for d, k, pr in stages[matched - 1][2]
+                if k not in skip and not pr(v)]
+    criteria = ([{"desc": d, "key": k, "measured": k not in skip}
+                 for d, k, _ in conds]
+                or [{"desc": "未达进阶期条件（兜底档）", "key": None, "measured": True}])
+    # 跳过的判据全集（不止当前档）：报告要告诉用户「这次定级少看了哪几条」
+    skipped = sorted({d for _, _, conds_ in stages for d, k, _ in conds_ if k in skip})
     return {"stage": num, "name": name, "criteria": criteria,
-            "gaps": gaps, "values": v}
+            "gaps": gaps, "values": v,
+            "skipped": skipped, "comparable": not skipped}
 
 
 @dataclass(frozen=True)
@@ -186,9 +228,17 @@ DEFAULT_POSTURE_BANDS = PostureBands()
 
 def diagnose_posture(posture_distribution: dict, decision_point_count: int,
                      plan_mode_sessions: int = 0, thinking_sessions: int = 0,
-                     bands: PostureBands = DEFAULT_POSTURE_BANDS) -> dict:
+                     bands: PostureBands = DEFAULT_POSTURE_BANDS,
+                     unmeasured=()) -> dict:
     """区间诊断姿态健康（不计入档位）。返回 {state, reason, values}。
-    state ∈ {样本不足, 偏对抗, 偏依赖, 放手为主, 健康}。"""
+    state ∈ {样本不足, 偏对抗, 偏依赖, 放手为主, 健康}。
+
+    *unmeasured* 只影响「放手为主」这一条翻判：它的唯一证据是 Plan mode 次数，
+    本来源测不到 Plan mode 时无从翻判，判定退回「偏依赖」但**在 reason 里明说
+    这条证据缺席**——不然用户会以为系统看过 Plan mode 并否掉了它。
+    值域不因来源变动（5 个值是与 SKILL.md 两侧对齐的契约，加值要两边同步改）。
+    """
+    plan_unmeasured = "plan_mode_sessions" in set(unmeasured or ())
     pd = normalize_posture(posture_distribution)
     l3 = round(pd["L3"], 6)
     l4 = round(pd["L4"], 6)
@@ -214,14 +264,15 @@ def diagnose_posture(posture_distribution: dict, decision_point_count: int,
         # thinking 是 CC 默认开启的配置、几乎人人非零、无区分度，不再当旁证（故忽略
         # thinking_sessions 形参，仅为兼容调用方而保留）。只有主动进 Plan mode 才算
         # 「放手为主」的证据，且要求达到保守量级——一次偶发不足以证明成熟放手。
-        if int(plan_mode_sessions or 0) >= bands.min_handsoff_plan_sessions:
+        if not plan_unmeasured and int(plan_mode_sessions or 0) >= bands.min_handsoff_plan_sessions:
             return {"state": "放手为主",
                     "reason": (f"引导力占比偏低，但 Plan mode 达 {int(plan_mode_sessions)} 次"
                                f"（≥{bands.min_handsoff_plan_sessions}），判为结论环节以放手为主"),
                     "values": vals}
-        return {"state": "偏依赖",
-                "reason": f"引导力 L3+L4 {l34:.0%} < {bands.guide_floor:.0%}，主动给约束偏少",
-                "values": vals}
+        reason = f"引导力 L3+L4 {l34:.0%} < {bands.guide_floor:.0%}，主动给约束偏少"
+        if plan_unmeasured:
+            reason += "；本来源测不到 Plan mode，无法判别是否属「放手为主」"
+        return {"state": "偏依赖", "reason": reason, "values": vals}
     # 判「健康」的实际判据只有两条：引导力过 guide_floor、L4 未超 ceiling。
     # 曾另有 l3_healthy_floor / l4_healthy_floor 两条「下沿」在此再分一次支，但两条
     # 分支都返回「健康」——它们不参与判定、只挑 reason 措辞，属空转旋钮，已删。

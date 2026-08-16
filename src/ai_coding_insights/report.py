@@ -17,36 +17,54 @@ from .view_model import bar_items as _bar_items
 from .view_model import safe_int, safe_num
 from .view_model import timeline_bars as _timeline_bars
 
-# ════ 样式约定（与设计稿一一对应）════
-# 背景      页面 #f3f5fa · 卡片 #fff · 卡片描边 #e1e5ef · 卡内分隔 #eef0f5
-# 横幅      linear-gradient(120deg,#0b1026,#18204a) + 青/紫角部微光 + 底部 3px 渐变 keyline
-# 文字      标题 #101828 · 正文 #344054 · 次级 #475467 · 弱化 #667085
-# 色彩职责  数据序列(姿势 L1→L4): #c7eaf4 → #76c7e6 → #6e8ef2 → #4640d9
-#           指标族: 产出落地 #0d9488 · 协作编排 #4f46e5 · 节奏投入 #7c3aed
-#           达标✓: #15803d · 建议动作: #b45309/#fdeac2 · 链接/指针: #0e7490
-# 章节号    ui-monospace 12px，按节循环 #0891b2 → #22a3c4 → #4f46e5 → #6366f1 →
-#           #7c87f5 → #8b5cf6 → #a78bfa
+# ════ 样式约定 ════
+# 背景      页面 #f3f5fa · 卡片 #fff · 卡片描边 #e8ebf2 · 卡内分隔 #eef0f5
+# 横幅      纯深色 #141b34 + 底部 2px keyline（曾是双层 radial 光晕 + 渐变，见 .hero 注释）
+# 文字      标题 #101828 · 正文 #344054 · 次级 #475467 · 弱化 #98a2b3
+# 色彩职责  **只有一个色相（indigo）**：数据序列靠同色深浅表达强弱，不靠换色相。
+#           姿势 L1→L4: #e0e7ff → #a5b4fc → #6366f1 → #3730a3（浅到深＝主导性递增）
+#           维度 / 指标族 / 横幅四数：统一 _BRAND，不再一族一色
+#           语义色仅三处：达标 #059669 · 还差与建议 #b45309 · caveat 琥珀卡片
+#           「不评判好坏」的趋势箭头必须同色——两种颜色本身就是褒贬
+# 章节号    ui-monospace 12px，统一弱化灰（编号是导航，不该抢内容的注意力）
 # 数字      一律 font-variant-numeric: tabular-nums
 # 板块顺序  以装配块（render_profile_report 内 `# 0N 段名`）为唯一真相源，本处不复述
 # 去重规则  横幅四数 = 四维代表值(成果·落地率 / 姿态·健康态 / 水平·工具广度 / 深度·轮次)，
 #           指标明细不重复横幅出现过的数，按族补齐明细(合入、编辑/合入、模型切换等)
 
-_SEC_COLORS = ["#0891b2", "#22a3c4", "#4f46e5", "#6366f1", "#7c87f5", "#8b5cf6", "#a78bfa"]
-# 姿势序列 L1→L4（横幅/堆叠条/图例共用）
-_POSTURE_COLORS = {"L1": "#c7eaf4", "L2": "#76c7e6", "L3": "#6e8ef2", "L4": "#4640d9"}
-# 堆叠条段内文字色按档位身份定（非 DOM 位置）：L1-L3 浅/中底用深字，仅 L4 深底用白字
-_BSEG_INK = {"L1": "#0e3a4a", "L2": "#0e3a4a", "L3": "#0e3a4a", "L4": "#ffffff"}
-# 高光序号圆点配色（按条目循环）
-_HL_DOT = [("#d7f3fa", "#0e7490"), ("#e3e6fd", "#4338ca"), ("#ede7fc", "#6d28d9")]
-# 维度色（详述行 + 卡片角标）
-_DIM_COLORS = {"姿势": "#0891b2", "水平": "#4f46e5", "深度": "#7c3aed", "成果": "#0d9488"}
-# 横幅四数配色（按 view.hero_nums 顺序：成果 / 姿态 / 水平 / 深度）
-_HERO_COLORS = ["#67e8f9", "#a5b4fc", "#5eead4", "#fcd34d"]
-# 指标族配色（族名 → (色块, 文字)）；族的构成与顺序由 view_model 决定
-_FAM_COLORS = {"产出落地": ("#0d9488", "#0f766e"), "协作编排": ("#4f46e5", "#4338ca"),
-               "高阶行为": ("#0891b2", "#0e7490"), "节奏投入": ("#7c3aed", "#6d28d9")}
-# 方向箭头配色，中性呈现不评判好坏：↑ 靛蓝，↓ 深青，→ 弱化灰（趋势表 / 同比共用）
-_ARROW_COLORS = {"↑": "#4f46e5", "↓": "#0e7490"}
+# ---- 配色：单一主色阶（靛蓝）+ 中性灰，语义色只在「达标 / 未达 / 警示」三处 ----
+# 收敛前这里有 30 多个色值（7 个章节色 + 4 姿势 + 4 维度 + 4 横幅 + 8 族色 + …），
+# 十几种色相同时争夺注意力，结果是没有重点、只有花。规则：
+#   · 色相只用一个（indigo）。需要区分层级时用同色深浅，不换色相。
+#   · 语义色仅三处：达标绿、未达/警示琥珀、警示卡片。其余一律中性灰。
+#   · 「不评判好坏」的地方（趋势箭头）必须是中性色——两种颜色本身就是褒贬暗示。
+_INK = "#101828"        # 正文
+_INK_2 = "#475467"      # 次要
+_INK_3 = "#98a2b3"      # 弱化
+_BRAND = "#4f46e5"      # 主色
+_BRAND_DEEP = "#3730a3"
+_OK = "#059669"
+_WARN = "#b45309"
+
+# 章节号不抢戏：编号是导航不是重点，统一弱化灰（长度保留 7，装配处按索引取）
+_SEC_COLORS = [_INK_3] * 7
+# 姿势序列 L1→L4：同色相由浅到深。**深浅本身就是「主导性递增」的语义**，
+# 旧配色青→蓝→紫是色相跳变，看不出 L1 到 L4 是同一把尺子上的四档。
+_POSTURE_COLORS = {"L1": "#e0e7ff", "L2": "#a5b4fc", "L3": "#6366f1", "L4": _BRAND_DEEP}
+# 堆叠条段内文字色按档位身份定（非 DOM 位置）：浅底深字，深底白字
+_BSEG_INK = {"L1": "#312e81", "L2": "#312e81", "L3": "#ffffff", "L4": "#ffffff"}
+# 高光序号圆点：统一一种，序号靠数字区分就够，不需要三种配色轮换
+_HL_DOT = [("#eef2ff", _BRAND_DEEP)]
+# 维度色：四维是同一份画像的四个面，不是四类不同的东西——统一主色
+_DIM_COLORS = {"姿势": _BRAND, "水平": _BRAND, "深度": _BRAND, "成果": _BRAND}
+# 横幅四数：深底上一律白色，靠字号和位置建立层次，不靠四种荧光色
+_HERO_COLORS = ["#ffffff"] * 4
+# 指标族配色（族名 → (色块, 文字)）：同上，族是分组不是分类
+_FAM_COLORS = {k: (_BRAND, _BRAND_DEEP)
+               for k in ("产出落地", "协作编排", "高阶行为", "节奏投入")}
+# 方向箭头：中性呈现不评判好坏，故**两个方向同色**——↑ 绿 ↓ 红那套是财报的语义，
+# 在这里会把「报错锚点下降」读成坏事。
+_ARROW_COLORS = {"↑": _INK_2, "↓": _INK_2}
 
 
 def _obj_items(v) -> list:
@@ -220,7 +238,9 @@ def _render_tool_skill_mcp_appendix(tool_session_counts: dict | None,
     sections += _bar_section(mcp_server_counts or {}, "MCP Server Top 8", top_n=8)
     sections += ('<div class="fine-note">广度看分布不看总数：头部断层＝你的工作流主轴，'
                  '长尾低频项可按需保留或卸载。</div>')
-    return sections
+    # 装进卡片：上面的 Token 附录是卡片，这几组条形图裸在背景上，两块紧挨着
+    # 一个有边框一个没有，看着像漏渲染了
+    return f'<div class="card tok-card">{sections}</div>'
 
 
 def _render_token_details(token_usage: dict | None, token_total, items: list | None) -> str:
@@ -233,8 +253,8 @@ def _render_token_details(token_usage: dict | None, token_total, items: list | N
     bars = ""
     for name, out in items:
         w = (out / mx * 100.0) if mx else 0.0
-        fill = ('background:linear-gradient(90deg,#22a3c4,#4640d9)' if w >= 3
-                else 'background:#22a3c4')
+        # 单色实心：渐变条在单色相配色下只是噪音，长度本身已经表达了量级
+        fill = f'background:{_BRAND}'
         bars += (
             f'<span class="tok-name">{escape(name)}</span>'
             f'<div class="tok-track"><div class="tok-fill" style="width:{max(w, 0.3):.1f}%;{fill}"></div></div>'
@@ -311,7 +331,7 @@ def _render_highlights_section(highlights: list | None, projects: list, idx: int
         rows += (
             f'<div class="hl-row{last}">'
             f'<span class="hl-dot" style="background:{bg};color:{fg}">{i + 1}</span>'
-            f'<span class="hl-text">{_hl_nums(h.get("behavior", ""), "#0e7490")}</span>'
+            f'<span class="hl-text">{_hl_nums(h.get("behavior", ""), _BRAND_DEEP)}</span>'
             f'<span class="hl-link" title="{escape(_ptr_label(h.get("pointer", ""), projects))}">原会话 ↗</span>{miss}'
             '</div>'
         )
@@ -622,38 +642,68 @@ b{font-weight:700}
 .dim2{color:#9aa3b2}
 .n{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:600;font-variant-numeric:tabular-nums}
 .mono{font-family:ui-monospace,'SF Mono',Menlo,monospace}
-/* ---- 横幅 ---- */
-.hero{background:
-  radial-gradient(620px 300px at 92% -60px,rgba(34,211,238,.16),transparent 70%),
-  radial-gradient(520px 280px at 4% 120%,rgba(139,92,246,.18),transparent 70%),
-  linear-gradient(120deg,#0b1026 0%,#18204a 100%);
-  color:#fff;padding:36px 40px 32px}
+/* ---- 横幅 ----
+   单一深色底，不用双层 radial 光晕：那两团彩雾既压不住四个大数字，又和下面的
+   浅色主体撕成两半。层次改由字号与留白建立。 */
+.hero{background:#141b34;color:#fff;padding:40px 40px 34px}
 .hero-inner{max-width:960px;margin:0 auto}
 .hero-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.kicker{font-size:14px;font-weight:600;color:#9aa6c8;letter-spacing:1px}
-.hero-meta{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;color:#8893b8}
+.kicker{font-size:13px;font-weight:600;color:#93a0c4;letter-spacing:.6px}
+.hero-meta{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;color:#7885ab}
 .hero-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
-  flex-wrap:wrap;margin-top:22px}
+  flex-wrap:wrap;margin-top:26px}
 .stage-big{font-size:38px;font-weight:700;letter-spacing:-.5px;line-height:1.1}
-.stage-sub{font-size:13px;color:#9aa6c8;margin-top:9px}
-.hero-nums{display:flex;gap:30px}
+.stage-sub{font-size:13px;color:#93a0c4;margin-top:10px;max-width:52ch;line-height:1.6}
+/* 四数之间加竖分隔线：颜色统一之后，靠间距已经分不清是四组还是一串 */
+.hero-nums{display:flex;gap:26px}
+.hero-nums>div{padding-left:26px;border-left:1px solid rgba(255,255,255,.14)}
+.hero-nums>div:first-child{padding-left:0;border-left:none}
 .hnum{font-size:25px;font-weight:700;font-variant-numeric:tabular-nums}
-.hlbl{font-size:11.5px;color:#9aa6c8;margin-top:2px}
+.hlbl{font-size:11.5px;color:#93a0c4;margin-top:3px}
+/* 横幅上的折叠：深底配色，行内展开不撑高首屏 */
+.hero-fold{display:inline}
+.hero-fold>summary{display:inline;cursor:pointer;color:#b9c3de;font-weight:600;
+  list-style:none}
+.hero-fold>summary::-webkit-details-marker{display:none}
+.hero-fold>summary::after{content:' ▸'}
+.hero-fold[open]>summary::after{content:' ▾'}
+.hero-detail{display:block;margin-top:6px;color:#8592b8;line-height:1.7}
 .pill-warn{display:inline-block;font-size:11px;font-weight:700;color:#7c2d12;
   background:#fdeac2;border:1px solid #f0c674;border-radius:999px;
   padding:2px 10px;margin-top:10px;white-space:nowrap}
-.keyline{height:3px;background:linear-gradient(90deg,#22d3ee,#6366f1 50%,#a78bfa)}
+.keyline{height:2px;background:#4f46e5}
 /* ---- 主体 ---- */
 .main{max-width:960px;margin:0 auto;padding:34px 40px 64px}
-.sec{display:flex;align-items:baseline;gap:10px;margin:30px 0 12px}
+/* 间距刻度统一到 8 的倍数：节间 32、节内 12、卡内 20/24。
+   旧值 30/34/22/13/9/11.5 各行其是，累积出来的就是「密度看着乱」。 */
+.sec{display:flex;align-items:baseline;gap:10px;margin:32px 0 12px}
 .sec-first{margin-top:0}
 .sec-num{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;font-weight:700}
 .sec-title{font-size:15px;font-weight:700;color:#101828}
 .sec-hint{font-size:12.5px;color:#667085}
-.card{background:linear-gradient(180deg,#fff,#fcfdff);border:1px solid #ebeef6;border-radius:14px;box-shadow:0 1px 2px rgba(20,28,52,.04),0 6px 16px rgba(20,28,52,.05)}
+/* 卡片：去掉纵向渐变与双层投影（在浅灰底上二者都看不出来，只是把边缘搞浑） */
+.card{background:#fff;border:1px solid #e8ebf2;border-radius:12px;
+  box-shadow:0 1px 2px rgba(20,28,52,.05)}
 .card-title{font-size:13px;font-weight:700;color:#101828}
 .fine-note{font-size:11.5px;color:#667085;line-height:1.6;margin-top:10px}
 .sec-note{margin-top:10px}
+/* 来源口径 caveat：琥珀色、置顶、不可折叠——它改变的是下面所有数字怎么读 */
+.caveat-card{padding:14px 16px;margin-top:22px;border-color:#f0d9a8;
+  background:linear-gradient(180deg,#fffaf0,#fffdf8)}
+.caveat-card .card-title{color:#92500e}
+.caveat-list{margin:8px 0 0 18px;font-size:12.5px;color:#5c4319;line-height:1.7}
+.cv-fold{display:inline}
+.cv-fold>summary{display:inline;cursor:pointer;color:#a1670f;font-weight:600;
+  list-style:none;margin-left:6px}
+.cv-fold>summary::-webkit-details-marker{display:none}
+.cv-fold>summary::before{content:'▸ '}
+.cv-fold[open]>summary::before{content:'▾ '}
+.cv-detail{margin:5px 0 2px;padding:8px 11px;background:#fdf6e7;border-radius:7px;
+  color:#6b5222;line-height:1.65}
+/* 档位 beta 角标：阈值尚未经人群分位校准，标出来免得被当成已定论的评级 */
+.beta-chip{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:6px;
+  font-size:11px;font-weight:700;letter-spacing:.4px;vertical-align:middle;
+  color:#fff;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.45)}
 .tag{font-size:11px;font-weight:700;border-radius:5px;padding:2px 8px;
   height:fit-content;white-space:nowrap;flex:0 0 auto}
 .tag-advice{color:#b45309;background:#fdeac2}
@@ -672,6 +722,25 @@ b{font-weight:700}
 .m-lbl{font-size:12px;color:#667085;margin-top:2px}
 .delta{font-weight:700;font-size:.95em;font-family:ui-monospace,'SF Mono',Menlo,monospace;
   font-variant-numeric:tabular-nums}
+/* ---- 降级来源的紧凑网格 ----
+   摘掉未测量格后通常只剩 9 格上下，再分四族会让每族只剩一两个格、右侧全是洞。
+   紧凑态铺成一个连续的 4 列网格（族名不再出现，格子少到那份上分组不带信息了）。
+   只有存在折叠项时才加这个 class，CC 满格路径的版面一像素不动。 */
+.fam-compact .fam{padding:18px 0 6px}
+.fam-compact .m-grid{row-gap:22px}
+/* ---- 未测量折叠区：低调但可见，收起时只占一行 ---- */
+.um-fold{border-top:1px solid #eef0f5;padding-top:12px;margin-top:2px}
+.um-fold>summary{cursor:pointer;font-size:12px;color:#667085;font-weight:600;
+  list-style:none;user-select:none}
+.um-fold>summary::-webkit-details-marker{display:none}
+.um-fold>summary::before{content:'▸ ';color:#98a2b3}
+.um-fold[open]>summary::before{content:'▾ '}
+.um-hint{font-weight:400;color:#98a2b3}
+.um-body{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}
+.um-item{display:inline-flex;align-items:baseline;gap:6px;padding:5px 10px;
+  border:1px dashed #d0d5dd;border-radius:7px;background:#fcfcfd;font-size:12px;
+  color:#475467}
+.um-fam{color:#98a2b3;font-size:11px}
 /* ---- highlights ---- */
 .hl-card{padding:8px 22px}
 .hl-row{display:flex;align-items:baseline;gap:12px;padding:13px 0;border-bottom:1px solid #eef0f5}
@@ -679,7 +748,7 @@ b{font-weight:700}
 .hl-dot{flex:0 0 auto;width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700;
   display:inline-flex;align-items:center;justify-content:center;transform:translateY(4px)}
 .hl-text{font-size:13.5px;color:#54607a;line-height:1.65;flex:1}
-.hl-link{font-size:12px;color:#0e7490;white-space:nowrap;font-weight:500;cursor:help}
+.hl-link{font-size:12px;color:#4f46e5;white-space:nowrap;font-weight:500;cursor:help}
 .ptr-miss{color:#b45309;font-size:11px;font-weight:700;white-space:nowrap}
 /* ---- posture ---- */
 .posture-full{padding:24px 26px}
@@ -689,14 +758,16 @@ b{font-weight:700}
 .crit-cols{display:flex;gap:30px;margin-top:20px;padding-top:16px;border-top:1px solid #eef0f5;flex-wrap:wrap}
 .crit-col{flex:1;min-width:200px}
 .crit-cap{font-size:11px;font-weight:700;letter-spacing:.5px;margin-bottom:8px}
-.crit-cap-ok{color:#15803d}
-.crit-cap-miss{color:#b42318}
+.crit-cap-ok{color:#059669}
+/* 「还差」用琥珀不用红：红色 ✗ 读起来是「你不合格」，而本项目的定位是给证据、
+   不下判决。差距是距离，不是错误。 */
+.crit-cap-miss{color:#b45309}
 .lg-row{display:flex;gap:8px}
 .lg-swatch{flex:0 0 auto;width:10px;height:10px;border-radius:3px;transform:translateY(4px)}
 .crit-list{display:grid;gap:10px;font-size:13px;color:#475467}
 .crit-row{display:flex;justify-content:space-between;gap:10px}
-.crit-ok{color:#15803d;font-weight:700;font-variant-numeric:tabular-nums}
-.crit-miss{color:#b42318;font-weight:700;font-variant-numeric:tabular-nums}
+.crit-ok{color:#059669;font-weight:700;font-variant-numeric:tabular-nums}
+.crit-miss{color:#b45309;font-weight:700;font-variant-numeric:tabular-nums}
 .crit-na{color:#667085}
 /* ---- dimensions ---- */
 .radar-card{padding:22px;display:grid;grid-template-columns:320px 1fr;gap:8px 26px;
@@ -739,6 +810,8 @@ b{font-weight:700}
 .tl-val{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#1a6b5a;font-weight:700}
 .tl-axis{display:flex;justify-content:space-between;font-size:11px;color:#8a93a8;margin-top:6px}
 /* ---- 工具/技能/MCP 附录 ---- */
+.tok-card{padding:20px 24px;margin-top:12px}
+.tok-card>.tok-block+.tok-block{margin-top:16px;padding-top:14px;border-top:1px solid #eef0f5}
 .tok-block{margin-bottom:8px}
 .tok-block summary{cursor:pointer;font-size:13px;font-weight:600;color:#475467;padding:4px 0;list-style:none}
 .tok-block summary::-webkit-details-marker{display:none}
@@ -746,7 +819,7 @@ b{font-weight:700}
 .tok-row{display:grid;grid-template-columns:160px 1fr 48px;gap:9px 12px;align-items:center;font-size:12.5px}
 .tok-label{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#54607a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tok-bar-wrap{height:9px;border-radius:4px;background:#eef1f6;overflow:hidden}
-.tok-bar{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#6e8ef2,#4f46e5)}
+.tok-bar{display:block;height:100%;border-radius:4px;background:#6366f1}
 .tok-val{font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#1b2440;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
 .fr-box{display:flex;gap:10px;margin-top:10px;background:#fffaeb;border:1px solid #fdeac2;
   border-radius:8px;padding:10px 14px}
@@ -776,7 +849,7 @@ table.trend tbody tr:last-child td{border-bottom:none}
 .t-dir{font-weight:700;text-align:center;padding-right:0}
 /* ---- 附录 ---- */
 .appendix{padding:16px 22px;margin-bottom:12px}
-.appendix summary{cursor:pointer;font-size:13.5px;font-weight:700;color:#0e7490;list-style:none}
+.appendix summary{cursor:pointer;font-size:13.5px;font-weight:700;color:#3730a3;list-style:none}
 .appendix summary::-webkit-details-marker{display:none}
 .tok-grid{display:grid;grid-template-columns:auto 1fr auto;gap:9px 14px;align-items:center;
   margin-top:18px;font-size:12.5px}
@@ -792,7 +865,7 @@ table.trend tbody tr:last-child td{border-bottom:none}
 .ev-row{display:flex;align-items:baseline;gap:14px;padding:11px 0;border-bottom:1px solid #eef0f5}
 .ev-last{border-bottom:none}
 .ev-text{font-size:13px;color:#344054;line-height:1.65;flex:1}
-.ptr-chip{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;color:#0e7490;
+.ptr-chip{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;color:#4f46e5;
   background:#ecf9fc;border:1px solid #c9ecf4;border-radius:5px;padding:2px 8px;
   white-space:nowrap;cursor:help}
 /* ---- 页脚 ---- */
@@ -838,26 +911,58 @@ def render_profile_report(profile: dict, meta: dict,
 
     # ---- 指标明细：四族，构成与取值由 view_model 定，这里只配色排版 ----
     fams = view["families"]
-    fam_html = ""
-    for fi, fam in enumerate(fams):
-        fcolor, ftext = _FAM_COLORS[fam["name"]]
-        last = " fam-last" if fi == len(fams) - 1 else ""
-        cell_html = ""
-        for ci, c in enumerate(fam["cells"]):
-            vcolor = ftext if ci == 0 else "#101828"
-            value = escape(c["value"])
-            if c["unit"]:
-                value += f'<span class="unit">{escape(c["unit"])}</span>'
-            delta = _fmt_delta(c["diff"]) if c["diff"] else ""
-            d = f" {delta}" if delta else ""
-            cell_html += (f'<div><div class="m-num" style="color:{vcolor}">{value}</div>'
-                          f'<div class="m-lbl">{escape(c["label"])}{d}</div></div>')
-        fam_html += (
-            f'<div class="fam{last}">'
-            f'<div class="fam-head" style="color:{ftext}">'
-            f'<span class="fam-swatch" style="background:{fcolor}"></span>'
-            f'{escape(fam["name"])}</div>'
-            f'<div class="m-grid">{cell_html}</div></div>'
+
+    def _cell_html(c, vcolor: str) -> str:
+        value = escape(c["value"])
+        if c["unit"]:
+            value += f'<span class="unit">{escape(c["unit"])}</span>'
+        delta = _fmt_delta(c["diff"]) if c["diff"] else ""
+        d = f" {delta}" if delta else ""
+        return (f'<div><div class="m-num" style="color:{vcolor}">{value}</div>'
+                f'<div class="m-lbl">{escape(c["label"])}{d}</div></div>')
+
+    # 降级来源：摘掉未测量格后通常只剩 9 格上下，再分四族会让每族只剩一两个格、
+    # 4 列网格右侧全是洞。**格子少到这个程度，族分组已经不带信息**——指标名本身
+    # 就自解释。故紧凑态铺成一个连续的 4 列网格，对齐整齐、没有空洞。
+    if view["unmeasured_cells"]:
+        flat = [c for fam in fams for c in fam["cells"]]
+        fam_html = ('<div class="fam fam-last"><div class="m-grid">'
+                    + "".join(_cell_html(c, "#4338ca" if i == 0 else "#101828")
+                              for i, c in enumerate(flat))
+                    + "</div></div>")
+    else:
+        fam_html = ""
+        for fi, fam in enumerate(fams):
+            fcolor, ftext = _FAM_COLORS[fam["name"]]
+            last = " fam-last" if fi == len(fams) - 1 else ""
+            cell_html = "".join(
+                _cell_html(c, ftext if ci == 0 else "#101828")
+                for ci, c in enumerate(fam["cells"])
+            )
+            fam_html += (
+                f'<div class="fam{last}">'
+                f'<div class="fam-head" style="color:{ftext}">'
+                f'<span class="fam-swatch" style="background:{fcolor}"></span>'
+                f'{escape(fam["name"])}</div>'
+                f'<div class="m-grid">{cell_html}</div></div>'
+            )
+
+    # ---- 未测量项：折叠在网格下方 ----
+    # 主网格只留实数（见 view_model.fold_unmeasured 的理由），但**一项都不能消失**：
+    # 折叠区块把它们连同所属族名逐条列出，默认收起、点开即见。
+    fold_html = ""
+    fam_compact = " fam-compact" if view["unmeasured_cells"] else ""
+    if view["unmeasured_cells"]:
+        items = "".join(
+            f'<span class="um-item"><b>{escape(c["label"])}</b>'
+            f'<span class="um-fam">{escape(c["family"])}</span></span>'
+            for c in view["unmeasured_cells"]
+        )
+        n = len(view["unmeasured_cells"])
+        fold_html = (
+            f'<details class="um-fold"><summary>本来源测不到的 {n} 项'
+            f'<span class="um-hint">（点开查看 · 测不到 ≠ 0）</span></summary>'
+            f'<div class="um-body">{items}</div></details>'
         )
 
     # ---- 姿势分布 + 档位判据 ----
@@ -921,11 +1026,14 @@ def render_profile_report(profile: dict, meta: dict,
         '<div class="dim-cards">'
         + _dim_card("水平", "水平 · 工具广度", breadth)
         + _dim_card("成果", "成果 · 落地", outcome,
-                    extra_rows=(f'<div class="pt-row pt-last"><div class="pt-line">'
-                                f'{_hl_nums(f"落地 {landed_disp} · 观测丢弃 {dropped_disp}", _DIM_COLORS["成果"])}'
-                                f'</div></div>'
-                                '<div class="fine-note">落地率 = 改动文件命中 AI 编辑的提交'
-                                ' ÷ 窗口同仓本人提交总数（同口径）。</div>'))
+                    # 两个数都测不到时这一行整行不出（view 已把测不到的那半段摘掉），
+                    # 但公式说明照旧。括号必须包住三元式——否则 `A if c else "" + B`
+                    # 会解析成 `A if c else ("" + B)`，正常路径反而丢掉后半段。
+                    extra_rows=(((f'<div class="pt-row pt-last"><div class="pt-line">'
+                                  f'{_hl_nums(view["outcome_nums"], _DIM_COLORS["成果"])}'
+                                  f'</div></div>') if view["outcome_nums"] else "")
+                                + '<div class="fine-note">落地率 = 改动文件命中 AI 编辑的提交'
+                                  ' ÷ 窗口同仓本人提交总数（同口径）。</div>'))
         + '</div>'
         + _depth_card(depth)
     )
@@ -966,13 +1074,21 @@ def render_profile_report(profile: dict, meta: dict,
     # ---- 横幅文案 ----
     window = meta.get("window")
     window_label = _fmt_window(window, safe_int(meta.get("lookback_days", 30)) or 30)
-    kicker = " · ".join(x for x in ["AI 驾驭力评估", window_label, view["scope_label"]] if x)
+    # kicker 带上来源：跨 harness 后，同一份报告的尺子取决于数据来自哪家，
+    # 不标就会被拿去跟另一家的档位/广度直接比。
+    kicker = " · ".join(x for x in ["AI 驾驭力评估", view["source_label"],
+                                    window_label, view["scope_label"]] if x)
     trunc_pill = _fmt_truncation(window)
     gen_local = _fmt_local(str(meta.get("generated_at", "")))
     hero_meta = (f"{escape(gen_local[:10])} · {view['session_count']} 会话"
                  f" · {len(projects)} 项目")
     if stage is not None:
-        stage_big = f'第 {view["stage_no"]} 档 · {escape(view["stage_name"])}'
+        # beta 角标：档位阈值目前是**初设值**，只经本机单人分布（calibrate --replay）
+        # 粗校，没有人群分位背书。不挂标就等于默认它已校准，用户会拿它当结论用——
+        # 而它现在只够当自我定位的参考线。
+        stage_big = (f'第 {view["stage_no"]} 档 · {escape(view["stage_name"])}'
+                     '<span class="beta-chip" title="档位阈值为初设值，仅经本机单人分布'
+                     '粗校，无人群分位背书；作自我定位参考，不作横向评比">beta</span>')
         crit_note = view["stage_crit_note"]
     else:
         stage_big, crit_note = "AI 协作画像", ""
@@ -981,18 +1097,43 @@ def render_profile_report(profile: dict, meta: dict,
     elif view["diff_note_kind"] == "baseline":
         diff_note = "首次基线，暂无同比"
     else:
-        # view.diff_summary 已剔掉无基线项（_fmt_delta 对它们返回空串），此处只排版
-        parts = [f"{escape(lname)} {_fmt_delta(d)}" for lname, d in view["diff_summary"]]
-        diff_note = ("较上次：" + " · ".join(parts)) if parts else ""
+        # 十个「↑10 ↑3 ↓1…」平铺在副标题里要占三行，是首屏最重的一块噪音；
+        # 但**不能直接删**——其中「会话内提交」等项在下面的指标格里没有对应格子，
+        # 删了就真丢了。故收成一句话 + 可展开，与 caveat 卡片同一套处理。
+        parts = [f"{escape(lname)} {_fmt_delta(d)}" for lname, d in view["diff_summary"]
+                 if _fmt_delta(d)]
+        diff_note = (f'<details class="hero-fold"><summary>较上次 {len(parts)} 项有变化'
+                     f'</summary><span class="hero-detail">{" · ".join(parts)}</span>'
+                     f'</details>') if parts else ""
     stage_sub = " · ".join(x for x in [crit_note, diff_note, "右侧为四维各自的代表值"] if x)
+
+    # ---- 来源口径 caveat（显式降级断点，置顶不折叠）----
+    # 位置刻意在第一个章节之前、不参与编号也不可折叠：这几条改变的是**怎么读**下面
+    # 所有数字（哪些是「未测量」不是 0、档位少判了几条、编排是否降级）。折叠或塞到
+    # 附录里等于允许用户漏读——那正是「不报错、只安静产出错误结论」的老路。
+    # 明细（十几个字段名）可以收起：结论摊在首屏三行反而让人整张卡片一起跳过。
+    caveat_html = ""
+    if view["source_notes"]:
+        items = []
+        for n in view["source_notes"]:
+            body = escape(n["text"])
+            if n.get("detail"):
+                body += ('<details class="cv-fold"><summary>看清单</summary>'
+                         f'<div class="cv-detail">{escape(n["detail"])}</div></details>')
+            items.append(f"<li>{body}</li>")
+        caveat_html = ('<div class="card caveat-card">'
+                       '<div class="card-title">读数前提 · 来源口径</div>'
+                       f'<ul class="caveat-list">{"".join(items)}</ul></div>')
 
     # ---- 章节按出场顺序连续编号（空板块跳过不占号）----
     sections: list[str] = []
+    if caveat_html:
+        sections.append(caveat_html)
     idx = 1
     # 01 指标明细
     sections.append(_sec_header(idx, "指标明细", "横幅四数为四维代表值，此处不再重复",
                                 margin_top=False)
-                    + f'<div class="card fam-card">{fam_html}</div>')
+                    + f'<div class="card fam-card{fam_compact}">{fam_html}{fold_html}</div>')
     # 02 姿势分布 + 判据
     idx += 1
     sections.append(_sec_header(idx, posture_sec_title) + posture_section_body)

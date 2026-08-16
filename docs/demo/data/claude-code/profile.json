@@ -1,0 +1,113 @@
+{
+  "breadth": {
+    "headline": "工具面铺到 16 种，子代理与计划模式已成常规动作",
+    "points": [
+      "21 场会话派过子代理，其中 9 轮是单轮并发多个（真并行，不是顺序逐个派）",
+      "计划模式 9 场：动手前先出方案再放行，集中在改动面较大的那几次",
+      "后台委托 11 次，长跑任务不再堵住主线程"
+    ],
+    "metrics": [
+      {
+        "label": "工具广度",
+        "value": "16 种"
+      },
+      {
+        "label": "真并行峰值",
+        "value": "4 个/轮"
+      },
+      {
+        "label": "自建扩展",
+        "value": "4 个"
+      }
+    ],
+    "tools": [
+      "Agent",
+      "Skill",
+      "EnterPlanMode",
+      "Workflow"
+    ]
+  },
+  "depth": {
+    "headline": "P90 轮次 26，长会话里以「贴报错 + 追加约束」推进，不是一锤子买卖",
+    "points": [
+      "报错锚点 118 次、纠偏锚点 74 次，纠错基本发生在同一场会话内闭环",
+      "窗口后半段每会话报错密度从 2.3 降到 1.3，同一类问题重复出现的次数明显减少",
+      "极短输入占比 15%：跟随式「继续 / 好的」不多，多数输入带具体约束"
+    ],
+    "metrics": [
+      {
+        "label": "P90 轮次",
+        "value": "26"
+      },
+      {
+        "label": "时长 P90",
+        "value": "71 min"
+      },
+      {
+        "label": "深度推理块",
+        "value": "318"
+      }
+    ]
+  },
+  "outcome": {
+    "headline": "落地率 65%：会话里改过的文件，多数最终进了提交",
+    "points": [
+      "窗口内本人提交 63 次，其中 41 次的改动文件与会话编辑集有交集",
+      "会话内观测到的提交 46 次，有 8 次事后不在 HEAD 历史里（被回退或重做）"
+    ],
+    "metrics": [
+      {
+        "label": "落地提交",
+        "value": "41"
+      },
+      {
+        "label": "提交总数",
+        "value": "63"
+      }
+    ],
+    "landed": 41,
+    "total": 49
+  },
+  "frictions": [
+    {
+      "observation": "有 3 场会话在同一处报错上反复 5 轮以上，每轮只贴新报错、没有补充已经排除掉的可能性，AI 重复给出已被否掉的方案。",
+      "suggestion": "第 3 轮还没过就换姿势：一次性把「已试过什么、结果如何、现在的假设是什么」摊开写成 5 行，再让 AI 只在剩余假设里选。",
+      "pointers": [
+        "/home/demo/.aci-demo/sessions/demo-cc-0001.jsonl#turn-7c2d41",
+        "/home/demo/.aci-demo/sessions/demo-cc-0002.jsonl#turn-90ab13"
+      ]
+    },
+    {
+      "observation": "子代理多数是顺序逐个派（真并行轮次 9 / 子代理会话 21），几处彼此独立的排查被排成了串行。",
+      "suggestion": "确认互不依赖时，在同一条消息里一次派完；把「先查 A 再查 B」改成「同时查 A 和 B，回来我合并」。",
+      "pointers": [
+        "/home/demo/.aci-demo/sessions/demo-cc-0002.jsonl#turn-4f81c0"
+      ]
+    },
+    {
+      "observation": "会话结束后仍有 8 次提交被回退，集中在没有先跑测试就提交的那几场。",
+      "suggestion": "把「跑一遍测试再提交」写进项目约定文件，让它成为默认动作而不是每次口头交代。",
+      "pointers": []
+    }
+  ],
+  "evidence": [
+    {
+      "pointer": "/home/demo/.aci-demo/sessions/demo-cc-0001.jsonl#turn-11d9e2",
+      "behavior": "主动给出接口边界与错误分支的期望行为，再让 AI 补实现"
+    },
+    {
+      "pointer": "/home/demo/.aci-demo/sessions/demo-cc-0001.jsonl#turn-55c7aa",
+      "behavior": "对 AI 给的方案指出具体技术缺陷并要求换实现路径"
+    },
+    {
+      "pointer": "/home/demo/.aci-demo/sessions/demo-cc-0002.jsonl#turn-4f81c0",
+      "behavior": "同一轮里并发派出 4 个子代理分头排查，回来自行合并结论"
+    }
+  ],
+  "highlights": [
+    {
+      "pointer": "/home/demo/.aci-demo/sessions/demo-cc-0002.jsonl#turn-33be07",
+      "behavior": "先写失败用例复现，再让 AI 在用例约束下改实现——整场会话由测试而不是描述来定义「做到位」"
+    }
+  ]
+}

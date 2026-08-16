@@ -65,6 +65,10 @@ class ParsedSession:
     cc_versions: list = field(default_factory=list)        # 去重排序的 CC version 列表（来自记录 version 字段）
     record_type_counts: dict = field(default_factory=dict) # {记录 type: 条数}，含 parser 不处理的类型，供漂移雷达
     edited_paths: list = field(default_factory=list)  # 去重的会话编辑文件绝对路径（本机内匹配用，不出本机）
+    # 会话来自哪家 harness（sources.py 的来源名）。默认 claude-code：它是参照来源，
+    # 也让全部既有调用方/测试无需改动。字面量而非 import sources——sources 反过来
+    # 依赖 models，引进来就是循环导入。
+    source: str = "claude-code"
 
 
 @dataclass
@@ -158,6 +162,16 @@ class AggregateMetrics:
     background_sessions: int = 0    # count：出现过后台委托的会话数
     max_parallel_agents: int = 0    # peak：跨会话单轮最大并行 Agent 数（真并行度）
     parallel_agent_turns: int = 0   # sum：真并行轮次总数（单轮 ≥2 Agent 同发）
+    # === 来源口径（多 harness 承重字段）===
+    source: str = "claude-code"     # 本窗口数据来自哪家 harness（sources.py 的来源名）
+    capabilities: list = field(default_factory=list)
+    # ↑ 本来源**能测到**的能力键（正面声明；反面即下面的 unmeasured）。能力盲区据它
+    # 判「这家有没有这个概念」——没有的概念不该报成「你没用过」。空列表 = 未声明，
+    # 消费方按能力全集处理（等价 claude-code），保住既有调用路径行为不变。
+    unmeasured: list = field(default_factory=list)
+    # ↑ 本来源**测不到**的字段名（sources.unmeasured_fields 算定）。这些字段的 0/空
+    # 是「没测」不是「没做」：渲染层打「未测量」、档位判定跳过对应判据、LLM 专家禁止
+    # 据其下负面结论。默认空列表 = claude-code 全能力，既有调用路径行为不变。
 
     @property
     def dropped_count(self) -> int:

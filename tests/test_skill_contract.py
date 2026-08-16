@@ -36,6 +36,10 @@ from ai_coding_insights.profile_schema import validate_profile
 from ai_coding_insights.snapshot import DEFAULT_SNAPSHOT_DIR
 
 仓库根 = Path(__file__).resolve().parent.parent
+# playbook 真相源（带安装期占位符的模板）与 CC 插件形态的生成物。
+# 本文件绝大多数内容断言读**生成物**——那是 CC 用户真正拿到的东西；
+# 模板与生成物是否同步，由 test_插件形态的_SKILL_是模板的生成物 单独钉死。
+PLAYBOOK_路径 = 仓库根 / "playbook" / "PLAYBOOK.md"
 SKILL_路径 = 仓库根 / "skills" / "ai-coding-insights" / "SKILL.md"
 CLAUDE_路径 = 仓库根 / "CLAUDE.md"
 HOOK_路径 = 仓库根 / "hooks" / "auto-scan-hook.sh"
@@ -43,13 +47,22 @@ HOOK_路径 = 仓库根 / "hooks" / "auto-scan-hook.sh"
 # 所有会写出 CLI 调用行的文档 / 脚本：任何一处提到的子命令与参数都必须真实存在。
 文档来源 = (
     SKILL_路径,
+    PLAYBOOK_路径,
     CLAUDE_路径,
     仓库根 / "README.md",
     仓库根 / "commands" / "reset.md",
+    # demo 的复现命令也是用户会照抄的调用行，参数改名后它们同样会静默失效
+    仓库根 / "docs" / "demo" / "README.md",
     HOOK_路径,
 )
 
-调用标记 = "python -m ai_coding_insights"
+# 调用行的两种写法：
+# - `python -m ai_coding_insights …`：CLAUDE.md / README / hook 脚本 / commands 里的写法
+# - `<ACI> …`：playbook（SKILL.md）里的写法。多 harness 化后命令前缀由安装器按各家
+#   替换（uvx / uv run --project / 裸 console script 都可能），playbook 只能写占位符。
+#   若这里不认 `<ACI>`，playbook 的整个调用面会从守卫视野里消失——参数改名不再报红。
+调用标记集 = ("python -m ai_coding_insights", "<ACI>")
+调用标记 = 调用标记集[0]   # 兼容旧引用
 
 
 # ---------------------------------------------------------------- 纯函数解析层
@@ -70,10 +83,12 @@ def 抽取调用(文本: str) -> dict[str, set[str]]:
     文本 = re.sub(r"\\\s*\n\s*", " ", 文本)
     结果: dict[str, set[str]] = {}
     for 行 in 文本.splitlines():
-        位置 = 行.find(调用标记)
-        if 位置 < 0:
+        # 取最靠前的那个标记：一行里理论上只会出现一种写法，取最早的即可
+        命中 = [(行.find(t), t) for t in 调用标记集 if 行.find(t) >= 0]
+        if not 命中:
             continue
-        令牌 = 行[位置 + len(调用标记):].split()
+        位置, 标记 = min(命中)
+        令牌 = 行[位置 + len(标记):].split()
         if not 令牌:
             continue
         if 令牌[0].startswith("-"):
@@ -168,13 +183,19 @@ def 抽取drift提醒段(skill文本: str) -> str:
     "calibrate": "手动调试命令：读本机快照做阈值分位定位，不进 SKILL.md 编排、不产 HTML",
 }
 
+# 来源两参数（`--source` / `--projects-dir`）会被 add_source_args 批量加到多个子命令上。
+# 它们的默认值都是 None（跟触发环境走 / 按来源解析），编排链路上一律不覆盖。
+_来源参数豁免 = {  # noqa: N816
+    "--projects-dir": "默认 None，运行时按来源解析（不再写死 ~/.claude/projects），编排不覆盖",
+}
+
 # 编排链路上的子命令——它们的参数面直接决定报告正确性，逐个参数要么在 SKILL.md 出现，
 # 要么在此显式豁免。init/auto-scan/reset/calibrate 不由 SKILL.md 编排，整体不在此列。
 编排子命令 = ("scan", "verify-obs", "render-profile")
 
 未进SKILL的参数豁免 = {  # noqa: N816
     "scan": {
-        "--projects-dir": "默认即 ~/.claude/projects，编排不覆盖",
+        **_来源参数豁免,
         "--config": "默认按 plugin-root 解析，编排不覆盖",
         "--days": "窗口由规则层 decide_window 决定，编排不得手填",
         "--json": "调试用输出形态，与 --emit-batches 互斥",
@@ -186,7 +207,7 @@ def 抽取drift提醒段(skill文本: str) -> str:
     "verify-obs": {},
     "render-profile": {
         "--out": "刻意不传：报告名由规则层按日期生成（SKILL.md 第 4 步明文要求）",
-        "--projects-dir": "默认即 ~/.claude/projects，编排不覆盖",
+        **_来源参数豁免,
         "--days": "窗口由 --window 文件透传，编排不得手填",
         "--config": "默认按 plugin-root 解析，编排不覆盖",
         "--snapshot-dir": "默认即 DEFAULT_SNAPSHOT_DIR，编排不覆盖",
@@ -543,9 +564,9 @@ SKILL引用的aggregate键 = {  # noqa: N816
     "commit_count", "dropped_count", "edit_count", "friction_stats",
     "git_commit_total", "git_landed_count", "landed_ratio", "max_parallel_agents",
     "mcp_sessions", "model_counts", "parallel_agent_turns", "parse_health",
-    "session_count", "skill_total_counts", "subagent_sessions",
+    "session_count", "skill_total_counts", "source", "subagent_sessions",
     "thinking_block_count", "thinking_sessions", "tool_breadth",
-    "tool_session_counts", "trend", "workflow_sessions",
+    "tool_session_counts", "trend", "unmeasured", "workflow_sessions",
 }
 
 # SKILL.md 引用的嵌套子键：{父键: (源码所在模块, 字面量变量名, 被引用的子键集合)}。
@@ -641,12 +662,14 @@ def 抽取manifest键集() -> set[str]:  # noqa: N802
 # SKILL.md 逐字引用的清单键（人工核对过）。
 SKILL引用的manifest键 = {  # noqa: N816
     "status", "batch_count", "batches", "included_projects",
-    "plugin_root", "batches_dir", "window", "aggregate", "message",
+    "plugin_root", "batches_dir", "window", "aggregate", "message", "source",
+    "schema_version",
 }
 
 未进SKILL的manifest键豁免 = {  # noqa: N816
     "mode": "与 window.mode 同值，SKILL 只用 window.mode 判取数范围",
     "days_since_last": "too_soon 分支的诊断数字，SKILL 只把 message 原样转述给用户",
+    "capabilities": "能力的正面声明，编排端只需读反面的 aggregate.unmeasured（那才决定哪些数字不能说）",
 }
 
 
@@ -794,6 +817,290 @@ def test_obs_姿态四档键两侧一致(skill文本):
     assert set(_POSTURE_KEYS) == 档位, (
         f"posture_counts 档位两侧不一致：规则层 {sorted(_POSTURE_KEYS)}，SKILL 骨架 {sorted(档位)}"
     )
+
+
+# ------------------------------------------- 7. 多源接缝（sources / installers / playbook）
+
+def test_能力映射表里的字段名在_AggregateMetrics_上真实存在():  # noqa: N802
+    """`CAPABILITY_METRICS` 是「未测量 ≠ 0」的真相源，写错字段名会**静默失效**。
+
+    失配的表现不是报错：`unmeasured` 里躺着一个不存在的字段名，渲染层按它找不到
+    任何格子，那个真正测不到的指标继续以 0 呈现——用户读到「你没用过 X」。
+    同理 `signals._drop_measured` 用 getattr 取值，取不到就当空、永远摘不掉。
+    """
+    import dataclasses
+
+    from ai_coding_insights.models import AggregateMetrics
+    from ai_coding_insights.sources import ALL_CAPABILITIES, CAPABILITY_METRICS
+
+    有效 = {f.name for f in dataclasses.fields(AggregateMetrics)} | {
+        n for n, v in vars(AggregateMetrics).items() if isinstance(v, property)}
+    坏字段 = sorted({f for fields in CAPABILITY_METRICS.values()
+                   for f in fields if f not in 有效})
+    assert not 坏字段, f"CAPABILITY_METRICS 引用了 AggregateMetrics 上不存在的字段：{坏字段}"
+    未知能力 = sorted(set(CAPABILITY_METRICS) - ALL_CAPABILITIES)
+    assert not 未知能力, f"CAPABILITY_METRICS 的键不在 ALL_CAPABILITIES 里：{未知能力}"
+
+
+def test_README_的能力矩阵与代码同步():  # noqa: N802
+    """README 那张「哪家测得到什么」的表是**代码生成物**，不是手写的。
+
+    它最容易烂：给某家加一条能力，代码这边全绿，README 还在告诉潜在用户
+    「Codex 测不到这个」——推广物料撒谎，而且没有任何东西会报错。
+    修复：`uv run python docs/demo/生成能力矩阵.py`，输出逐字贴回 README。
+    """
+    import importlib.util
+
+    生成器 = 仓库根 / "docs" / "demo" / "生成能力矩阵.py"
+    assert 生成器.is_file(), f"能力矩阵生成器不在了：{生成器}（README 那张表将无从校验）"
+    spec = importlib.util.spec_from_file_location("_矩阵生成器", 生成器)
+    模块 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(模块)
+    表 = 模块.markdown().strip()
+    readme = (仓库根 / "README.md").read_text(encoding="utf-8")
+    assert 表 in readme, (
+        "README 的能力矩阵与代码不同步，请跑："
+        "uv run python docs/demo/生成能力矩阵.py 并把输出逐字贴回 README")
+
+
+def test_能力盲区每一条都挂在真实能力键上():  # noqa: N802
+    """盲区条目的能力键若拼错/不存在，那一条会**永远不报**——静默少一项建议。
+
+    这类失效不会报错也不会改变任何数字，只是报告里悄悄少了一行；单元测试也照样绿
+    （它们通常只断言「用过的不报」）。故在此按真相源比对。
+    """
+    from ai_coding_insights.capabilities import _CAPABILITIES
+    from ai_coding_insights.sources import ALL_CAPABILITIES
+
+    坏键 = sorted({cap for *_, cap in _CAPABILITIES if cap not in ALL_CAPABILITIES})
+    assert not 坏键, f"能力盲区引用了不存在的能力键：{坏键}"
+    # 反向：能力全集里若有键从没被任何盲区条目用到，多半是加了键忘了加条目
+    未用 = sorted(ALL_CAPABILITIES - {cap for *_, cap in _CAPABILITIES})
+    仅内部使用 = {"tool_calls", "thinking", "token_usage", "edited_paths", "git_operation",
+              "edit_count", "cli_version", "option_pick", "background_task"}
+    assert not (漏 := sorted(set(未用) - 仅内部使用)), (
+        f"这些能力键没有对应的盲区条目，也没登记为「仅内部使用」：{漏}")
+
+
+def test_工具名规范表覆盖每家来源且改名有效():  # noqa: N802
+    """规范表把各家工具名统一成 CC 名，能力盲区才判得准（`todowrite` vs `TodoWrite`）。
+
+    钉三件事：
+    1. 每家都有条目（新增来源必须显式决定「要不要改名」，而不是默默走空表）；
+    2. 改名目标真的有人认——映到一个没有任何判定看的名字，等于白改，且没人会发现；
+    3. **是改名不是加名**（`canonical_tools` 不能让工具数变多，否则 tool_breadth 虚高）。
+    """
+    from ai_coding_insights.capabilities import _CAPABILITIES
+    from ai_coding_insights.sources import CANONICAL_TOOL_NAMES, SOURCE_NAMES, canonical_tools
+
+    assert set(CANONICAL_TOOL_NAMES) == set(SOURCE_NAMES), (
+        f"工具名规范表与来源注册表不一致：{sorted(set(CANONICAL_TOOL_NAMES) ^ set(SOURCE_NAMES))}")
+    目标 = {v for table in CANONICAL_TOOL_NAMES.values() for v in table.values()}
+    for name in sorted(目标):
+        命中 = any(pred({name}, None, None) for _, pred, _, _ in _CAPABILITIES)
+        assert 命中, (
+            f"规范名 {name!r} 不被任何能力判定识别——这次改名是白改，"
+            "要么改错了目标名，要么该给它配一条盲区条目")
+    # 改名不加名：把一组原生名规范化后，数量不增
+    for 来源, table in CANONICAL_TOOL_NAMES.items():
+        原生 = list(table) + ["某个本家特有工具"]
+        assert len(canonical_tools(原生, 来源)) <= len(set(原生))
+
+
+def test_批次与聚合两侧的工具名同口径():
+    """规范化必须在**两个**消费者上都做：`aggregate.tool_session_counts`（能力判定用）
+    与 `batch.signals.tools_used`（extractor/专家读的那份）。
+
+    只在一侧做的后果：同一份报告里 batch 写 `webfetch`、aggregate 写 `WebFetch`，
+    专家拿两套名字对不上账，却又不会报错——只是叙述开始自相矛盾。
+    """
+    from ai_coding_insights import profile_input, signals
+
+    for 名字, 模块 in (("signals.aggregate_metrics", signals.aggregate_metrics),
+                    ("profile_input.build_session_input", profile_input.build_session_input)):
+        源码 = inspect.getsource(模块)
+        assert "canonical_tools(" in 源码, f"{名字} 没对工具名做规范化"
+        assert "tools_used" in 源码, f"{名字} 里读不到 tools_used"
+
+
+def test_定制化探测一律带来源():
+    """`customization` 三个探测函数都有 `source` 默认值 `claude-code`——**默认值是陷阱**。
+
+    忘了传 source，代码照跑、测试照绿，只是把本机 `~/.claude/` 下的自建技能与 hook 配置
+    算到了 Codex/opencode 头上。实测踩过：Codex 报告里冒出「已接线 6 类 hook 事件」，
+    而 Codex 根本没有 hook 机制——专家据此写进了报告，用户读到的是一条编出来的事实。
+
+    故在 cli 的两条取数路径里，这三个函数的每一次调用都必须显式带 `source=`。
+    """
+    需带来源 = ("scan_custom_skills", "detect_hook_config", "count_project_md_sessions")
+    漏网 = []
+    for 名字, 函数 in (("_emit_batches", cli._emit_batches),
+                    ("_cmd_auto_scan", cli._cmd_auto_scan)):
+        源码 = inspect.getsource(函数)
+        for fn in 需带来源:
+            for 调用 in re.findall(rf"{fn}\(([^)]*)\)", 源码):
+                if "source=" not in 调用:
+                    漏网.append(f"{名字}: {fn}({调用}) 没带 source=")
+    assert not 漏网, "定制化探测漏传来源（会把 CC 的配置算到别家头上）：\n" + "\n".join(漏网)
+
+
+def test_每家来源都能解析出它自己的_parser_模块():  # noqa: N802
+    """来源注册表用惰性导入（一家坏了不拖垮另外两家），代价是**模块名写错到运行时才炸**。
+
+    这里在测试期把三家都真的 import 一遍并检查两个函数存在，把「运行时才发现
+    codex_source 拼成了 codex_sources」提前到提交时。
+    """
+    import importlib
+
+    from ai_coding_insights import sources
+
+    缺失 = []
+    for 名字 in sources.SOURCE_NAMES:
+        src = sources.get_source(名字)
+        模块名 = f"{名字.replace('-', '_')}_source" if 名字 != "claude-code" else "cc_source"
+        try:
+            mod = importlib.import_module(f"ai_coding_insights.{模块名}")
+        except ImportError as exc:
+            缺失.append(f"{名字}: 解析模块 {模块名} 导入失败（{exc}）")
+            continue
+        for fn in ("iter_sessions", "earliest_ts"):
+            if not callable(getattr(mod, fn, None)):
+                缺失.append(f"{名字}: {模块名} 缺少 {fn}")
+        assert src.capabilities <= sources.ALL_CAPABILITIES, f"{名字} 声明了未知能力键"
+    assert not 缺失, "来源注册表与实际 parser 模块失配：\n" + "\n".join(缺失)
+
+
+def test_每家来源都配了安装适配器():  # noqa: N802
+    """新增一家来源却忘了配适配器 → `install` 在那家上直接不可用（而不是报错）。"""
+    from ai_coding_insights import sources
+    from ai_coding_insights.installers import ADAPTERS
+
+    assert set(ADAPTERS) == set(sources.SOURCE_NAMES), (
+        f"安装适配器与来源注册表不一致：适配器多 {sorted(set(ADAPTERS) - set(sources.SOURCE_NAMES))}，"
+        f"适配器缺 {sorted(set(sources.SOURCE_NAMES) - set(ADAPTERS))}"
+    )
+
+
+def test_每家的触发写法都配齐且取名方式正确():  # noqa: N802
+    """装完要告诉用户「怎么调起来」，而三家取名方式**不一样**。
+
+    CC / Codex 取所在**目录名**，opencode 取**文件名**。少配一家会落到默认分支，
+    用户拿到一个调不出来的名字（CC 上就会变成 `/SKILL`）——装是装上了，但用户找不到，
+    照旧不报错。这里同时钉「每家都登记了」和「取名确实按各家规矩」。
+    """
+    from ai_coding_insights import sources
+    from ai_coding_insights.installers import ADAPTERS, _INVOCATION, invocation_hint
+
+    assert set(_INVOCATION) == set(sources.SOURCE_NAMES), (
+        f"触发写法登记与来源注册表不一致：{sorted(set(_INVOCATION) ^ set(sources.SOURCE_NAMES))}")
+    for 名字, adapter in ADAPTERS.items():
+        目标 = adapter.target()
+        提示 = invocation_hint(adapter, 目标)
+        assert 提示[1:], f"{名字} 的触发提示没有名字部分：{提示!r}"
+        assert "SKILL" not in 提示, (
+            f"{名字} 的触发提示取成了文件名 {提示!r}——这家应按目录名取")
+        期望名 = 目标.parent.name if _INVOCATION[名字][1] == "dir" else 目标.stem
+        assert 提示 == _INVOCATION[名字][0] + 期望名
+
+
+def test_契约版本号两侧一致(skill文本):  # noqa: N802
+    """`schema_version` 是防「旧 playbook × 新规则层」静默失配的那道闸。
+
+    playbook 装在用户机器上、规则层由 uvx 每次拉最新，两边必然会各自漂移。规则层把
+    版本号 +1 而 playbook 里那个数字没跟着改，闸门就从「响亮失败」退化成「永远放行」——
+    比没有这道闸更坏（它给人一种已经防住了的错觉）。
+    """
+    from ai_coding_insights.cli import MANIFEST_SCHEMA_VERSION
+
+    for 名字, 文本 in (("SKILL.md", skill文本),
+                    ("PLAYBOOK.md", PLAYBOOK_路径.read_text(encoding="utf-8"))):
+        m = re.search(r"`schema_version`\s*必须等于\s*\*\*(\d+)\*\*", 文本)
+        assert m, f"{名字} 里找不到 schema_version 的期望值（第 1 步应写「必须等于 **N**」）"
+        assert int(m.group(1)) == MANIFEST_SCHEMA_VERSION, (
+            f"{名字} 写的契约版本 {m.group(1)} 与 cli.MANIFEST_SCHEMA_VERSION"
+            f"（{MANIFEST_SCHEMA_VERSION}）不一致")
+
+
+def test_playbook_真相源与打包搬运的是同一个文件():  # noqa: N802
+    """playbook 只有一份真相源，wheel 里那份靠 pyproject 的 force-include 搬运。
+
+    三处路径必须对上：`playbook.REPO_PLAYBOOK`、本文件的 `PLAYBOOK_路径`、
+    pyproject 的 force-include 源路径。任一处改了名而别处没跟，uvx 场景就会装出
+    一份**旧的或空的** playbook——用户触发后行为莫名其妙，且没有任何报错。
+    """
+    import tomllib
+
+    from ai_coding_insights import playbook
+
+    assert (playbook.repo_root() / playbook.REPO_PLAYBOOK).resolve() == PLAYBOOK_路径.resolve()
+    数据 = tomllib.loads((仓库根 / "pyproject.toml").read_text(encoding="utf-8"))
+    force = (数据.get("tool", {}).get("hatch", {}).get("build", {})
+             .get("targets", {}).get("wheel", {}).get("force-include", {}))
+    assert force, "pyproject 没把 playbook force-include 进 wheel，uvx 场景装不出 playbook"
+    命中 = [(k, v) for k, v in force.items()
+          if (仓库根 / k).resolve() == PLAYBOOK_路径.resolve()]
+    assert 命中, f"force-include 里没有 playbook 真相源，实际条目：{sorted(force)}"
+    for _, 落点 in 命中:
+        assert 落点.endswith(str(playbook.PACKAGED_PLAYBOOK).replace("\\", "/")), (
+            f"force-include 落点 {落点} 与 playbook.PACKAGED_PLAYBOOK 不一致")
+
+
+def test_插件形态的_SKILL_是模板的生成物():  # noqa: N802
+    """`skills/ai-coding-insights/SKILL.md` 是生成物，必须与模板保持同步。
+
+    marketplace 分发的是整个仓库，插件自带的 skill 得是**已渲染**的（占位符对 LLM
+    毫无意义）。这份生成物一旦手改、或改了模板忘了重新生成，插件用户就会拿到一份
+    旧 playbook——照旧不报错，只是照着过期指令干活。修复：
+        uv run python scripts/render-plugin-skill.py
+    """
+    from ai_coding_insights.installers import (PLUGIN_ADAPTER, render_playbook,
+                                               unsubstituted_placeholders)
+
+    期望 = render_playbook(PLAYBOOK_路径.read_text(encoding="utf-8"), PLUGIN_ADAPTER)
+    实际 = SKILL_路径.read_text(encoding="utf-8")
+    assert 实际 == 期望, (
+        "插件形态的 SKILL.md 与 playbook 模板不同步，请跑："
+        "uv run python scripts/render-plugin-skill.py"
+    )
+    assert not unsubstituted_placeholders(实际), "生成物里还留着安装期占位符"
+    assert PLUGIN_ADAPTER.target().resolve() == SKILL_路径.resolve(), (
+        "PLUGIN_ADAPTER 的落点不是仓库里的 skill 文件")
+    # 插件形态的白名单必须罩得住它自己的命令前缀，否则每条命令都弹权限确认
+    白名单 = PLUGIN_ADAPTER.frontmatter.get("allowed-tools", "")
+    assert PLUGIN_ADAPTER.command_prefix.split()[0] in 白名单, (
+        f"allowed-tools({白名单}) 罩不住命令前缀({PLUGIN_ADAPTER.command_prefix})")
+    # 插件变体刻意不进 ADAPTERS（它不是一个来源，是同一来源的第二种分发形态）
+    from ai_coding_insights.installers import ADAPTERS
+    assert PLUGIN_ADAPTER not in ADAPTERS.values()
+
+
+def test_渲染后的_playbook_不留安装期占位符():  # noqa: N802
+    """`<ACI>` / `<SOURCE>` 没被替换掉 → 编排端拿到的是字面占位符。
+
+    playbook 开头已要求「读到占位符就停下」，但那是靠 LLM 自觉；这里在提交时就钉死。
+    同时反向钉：**运行时**占位符必须原样保留（安装器不该碰它们）。
+    """
+    from ai_coding_insights.installers import ADAPTERS, render_playbook, unsubstituted_placeholders
+
+    原文 = PLAYBOOK_路径.read_text(encoding="utf-8")
+    运行时占位符 = ["<PLUGIN_ROOT>", "<BATCHES_DIR>", "<RUN_STARTED>", "<AGENT_N>"]
+    from ai_coding_insights.installers import PLUGIN_ADAPTER
+    for 名字, adapter in {**ADAPTERS, "claude-code-plugin": PLUGIN_ADAPTER}.items():
+        渲染 = render_playbook(原文, adapter)
+        assert not unsubstituted_placeholders(渲染), (
+            f"{名字} 渲染后仍有未替换的安装期占位符："
+            f"{unsubstituted_placeholders(渲染)}")
+        for ph in 运行时占位符:
+            assert ph in 渲染, f"{名字} 渲染时把运行时占位符 {ph} 也替换掉了（那是 LLM 该填的）"
+        # 非插件形态绝不能留 ${CLAUDE_PLUGIN_ROOT}：它在别家 shell 里为空，
+        # 空词被吃掉后 `--plugin-root` 会把下一个参数当成自己的取值，整条命令走歪。
+        # 只查危险形态本身（正文里还有一句「不要用 ${CLAUDE_PLUGIN_ROOT}」的说明文字，
+        # 那是给 LLM 的告诫、不是命令，不该被这条守卫误伤）。
+        if adapter is not PLUGIN_ADAPTER:
+            assert "--plugin-root ${CLAUDE_PLUGIN_ROOT}" not in 渲染, (
+                f"{名字} 的渲染结果里残留 `--plugin-root ${{CLAUDE_PLUGIN_ROOT}}`——"
+                "非 CC 插件形态下该变量恒为空，空词被 shell 吃掉后 `--plugin-root` "
+                "会把紧随其后的参数当成自己的取值，整条命令静默走歪")
 
 
 def test_SKILL_引用的_window_子键在规则层真实赋值(skill文本):  # noqa: N802

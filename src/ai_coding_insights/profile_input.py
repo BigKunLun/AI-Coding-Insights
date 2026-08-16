@@ -1,6 +1,7 @@
 from .models import ParsedSession, SessionStats, OutcomeStats
 from .redact import redact_secrets
 from .signals import anchors
+from .sources import CLAUDE_CODE, canonical_tools
 
 
 def build_session_input(session: ParsedSession, stats: SessionStats, outcome: OutcomeStats) -> dict:
@@ -16,7 +17,10 @@ def build_session_input(session: ParsedSession, stats: SessionStats, outcome: Ou
         "signals": {
             "turn_count": stats.turn_count,
             "short_turn_ratio": round(stats.short_turn_ratio, 3),
-            "tools_used": session.tools_used,
+            # 与 aggregate 同口径规范化：不统一的话，同一份报告里 batch 显示 `webfetch`
+            # 而 aggregate 显示 `WebFetch`，专家读到两套名字、无从对账。
+            "tools_used": canonical_tools(session.tools_used,
+                                          getattr(session, "source", CLAUDE_CODE)),
             "models_used": session.models_used,
             "commit_count": outcome.commit_count,
             "landed_count": outcome.landed_count,

@@ -13,11 +13,53 @@ _UUID_FIELD = re.compile(r'"uuid"\s*:\s*"([^"]+)"')
 
 
 def extract_turn_uuids(lines) -> set[str]:
-    """从 jsonl 行迭代器提取全部 uuid 字段值（一遍扫完，供同文件多条指针复用）。"""
+    """从 jsonl 行迭代器提取全部 uuid 字段值（一遍扫完，供同文件多条指针复用）。
+
+    这是 **Claude Code 专用**的快路：CC transcript 每条记录自带 `"uuid"` 字段。
+    别的 harness 没有这个字段（Codex 的 turn uuid 由 parser 按行号合成、opencode 用
+    message id），跨来源请走 `turn_uuids_for`。
+    """
     out: set[str] = set()
     for line in lines:
         out.update(_UUID_FIELD.findall(line))
     return out
+
+
+# 支持 uuid 级指针回看的来源。不在其中的来源只核文件存在性，并在报告里如实说明
+# 少了这道核验（见 view_model 的 source_notes）。加一家来源就要想清楚它属哪一边。
+POINTER_UUID_SOURCES = frozenset({"claude-code", "codex"})
+
+
+def turn_uuids_for(path, source_name: str) -> set[str] | None:
+    """按来源取该会话文件里全部**真人轮次**的 uuid 集合。
+
+    返回 None 表示「本来源不支持指针 uuid 回看」——调用方此时**只核文件存在性**，
+    不要把指针一律判成未命中。这条区分是承重的：Codex/opencode 的 uuid 形状与 CC
+    完全不同，若沿用 CC 的正则，每一条证据指针都会被打上 ⚠「未命中」——用户看到的
+    是一份「证据全都对不上」的报告，而真相只是核验方式没跟上来源。宁可少一道核验、
+    并如实说明少了这道核验，也不要制造整片假警报。
+    """
+    from pathlib import Path as _Path
+
+    p = _Path(path)
+    if source_name == "claude-code":
+        try:
+            with p.open(encoding="utf-8") as f:
+                return extract_turn_uuids(f)
+        except OSError:
+            return set()   # 文件读不了 = 一个 uuid 都命中不了（与「不支持核验」不同）
+    if source_name == "codex":
+        # Codex rollout 记录没有 uuid 字段，turn uuid 由 parser 合成（形如 turn-<行号>）。
+        # 直接问 parser 要，避免在这里复刻一份「哪条算真人轮次」的判别逻辑——
+        # 复刻出来的第二份判别迟早与 parser 漂移，而漂移的表现又是安静地误判指针。
+        try:
+            from .codex_source import parse as _parse
+            return {t.uuid for t in _parse(p).user_turns if t.uuid}
+        except (OSError, ImportError, ValueError):
+            return set()
+    # opencode 会话存在 SQLite 库里、不是「一个文件一场会话」，指针回看要按 message id
+    # 查库，v1 暂不支持：如实返回 None（不支持核验），而不是假装核验过。
+    return None
 
 
 def split_pointer(pointer) -> tuple[str, str | None]:

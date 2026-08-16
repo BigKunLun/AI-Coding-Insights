@@ -1,0 +1,373 @@
+{
+  "session_count": 47,
+  "human_input_count": 470,
+  "active_days": 11,
+  "avg_turns": 10.0,
+  "tool_breadth": 9,
+  "tool_session_counts": {
+    "shell": 44,
+    "apply_patch": 38,
+    "read_file": 41,
+    "exec_command": 22,
+    "list_dir": 19,
+    "grep": 17,
+    "update_plan": 12,
+    "web_search": 6,
+    "view_image": 3
+  },
+  "subagent_sessions": 0,
+  "workflow_sessions": 0,
+  "mcp_sessions": 0,
+  "model_counts": {
+    "model-b-high": 39,
+    "model-b-mini": 12
+  },
+  "commit_count": 0,
+  "landed_count": 0,
+  "edit_count": 388,
+  "duration_median_min": 19.0,
+  "anchor_counts": {
+    "override": 38,
+    "error": 96,
+    "code": 173,
+    "link": 22
+  },
+  "token_usage": {
+    "model-b-high": {
+      "input": 860000,
+      "output": 171000,
+      "cache_read": 4300000,
+      "cache_creation": 0
+    },
+    "model-b-mini": {
+      "input": 190000,
+      "output": 38000,
+      "cache_read": 640000,
+      "cache_creation": 0
+    }
+  },
+  "token_total": 6199000,
+  "trend": {
+    "first_half": {
+      "sessions": 22,
+      "commits": 0,
+      "landed_ratio": null,
+      "override": 22,
+      "error": 58,
+      "short_ratio": 0.31
+    },
+    "second_half": {
+      "sessions": 25,
+      "commits": 0,
+      "landed_ratio": null,
+      "override": 16,
+      "error": 38,
+      "short_ratio": 0.27
+    }
+  },
+  "short_turn_count": 136,
+  "option_pick_count": 0,
+  "decision_point_count": 470,
+  "git_landed_count": 19,
+  "git_commit_total": 34,
+  "landed_ratio": 0.5588235294117647,
+  "dropped_count": 0,
+  "friction_stats": {
+    "error_top_sessions": [
+      {
+        "rank": 1,
+        "error_turns": 12
+      }
+    ],
+    "override_top_sessions": [
+      {
+        "rank": 1,
+        "override_turns": 6
+      }
+    ],
+    "error_session_share": 0.51,
+    "override_session_share": 0.23
+  },
+  "plan_mode_sessions": 0,
+  "plan_mode_count": 0,
+  "concurrent_days": 2,
+  "claude_md_sessions": 3,
+  "max_concurrent_sessions": 2,
+  "skill_counts": {},
+  "skill_total_counts": {},
+  "mcp_server_counts": {},
+  "daily": [
+    {
+      "date": "2026-07-18",
+      "session_count": 0,
+      "human_input_count": 0,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-19",
+      "session_count": 2,
+      "human_input_count": 19,
+      "commit_count": 1,
+      "landed_count": 0,
+      "edit_count": 14,
+      "token_total": 82000
+    },
+    {
+      "date": "2026-07-20",
+      "session_count": 4,
+      "human_input_count": 38,
+      "commit_count": 3,
+      "landed_count": 2,
+      "edit_count": 28,
+      "token_total": 164000
+    },
+    {
+      "date": "2026-07-21",
+      "session_count": 3,
+      "human_input_count": 30,
+      "commit_count": 2,
+      "landed_count": 1,
+      "edit_count": 21,
+      "token_total": 123000
+    },
+    {
+      "date": "2026-07-22",
+      "session_count": 0,
+      "human_input_count": 4,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-23",
+      "session_count": 5,
+      "human_input_count": 45,
+      "commit_count": 4,
+      "landed_count": 3,
+      "edit_count": 35,
+      "token_total": 205000
+    },
+    {
+      "date": "2026-07-24",
+      "session_count": 1,
+      "human_input_count": 10,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 7,
+      "token_total": 41000
+    },
+    {
+      "date": "2026-07-25",
+      "session_count": 0,
+      "human_input_count": 2,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-26",
+      "session_count": 0,
+      "human_input_count": 3,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-27",
+      "session_count": 2,
+      "human_input_count": 22,
+      "commit_count": 1,
+      "landed_count": 0,
+      "edit_count": 14,
+      "token_total": 82000
+    },
+    {
+      "date": "2026-07-28",
+      "session_count": 4,
+      "human_input_count": 36,
+      "commit_count": 3,
+      "landed_count": 2,
+      "edit_count": 28,
+      "token_total": 164000
+    },
+    {
+      "date": "2026-07-29",
+      "session_count": 3,
+      "human_input_count": 28,
+      "commit_count": 2,
+      "landed_count": 1,
+      "edit_count": 21,
+      "token_total": 123000
+    },
+    {
+      "date": "2026-07-30",
+      "session_count": 0,
+      "human_input_count": 2,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-07-31",
+      "session_count": 5,
+      "human_input_count": 48,
+      "commit_count": 4,
+      "landed_count": 3,
+      "edit_count": 35,
+      "token_total": 205000
+    },
+    {
+      "date": "2026-08-01",
+      "session_count": 1,
+      "human_input_count": 13,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 7,
+      "token_total": 41000
+    },
+    {
+      "date": "2026-08-02",
+      "session_count": 0,
+      "human_input_count": 0,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-08-03",
+      "session_count": 0,
+      "human_input_count": 1,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-08-04",
+      "session_count": 2,
+      "human_input_count": 20,
+      "commit_count": 1,
+      "landed_count": 0,
+      "edit_count": 14,
+      "token_total": 82000
+    },
+    {
+      "date": "2026-08-05",
+      "session_count": 4,
+      "human_input_count": 39,
+      "commit_count": 3,
+      "landed_count": 2,
+      "edit_count": 28,
+      "token_total": 164000
+    },
+    {
+      "date": "2026-08-06",
+      "session_count": 3,
+      "human_input_count": 31,
+      "commit_count": 2,
+      "landed_count": 1,
+      "edit_count": 21,
+      "token_total": 123000
+    },
+    {
+      "date": "2026-08-07",
+      "session_count": 0,
+      "human_input_count": 0,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    },
+    {
+      "date": "2026-08-08",
+      "session_count": 5,
+      "human_input_count": 46,
+      "commit_count": 4,
+      "landed_count": 3,
+      "edit_count": 35,
+      "token_total": 205000
+    },
+    {
+      "date": "2026-08-09",
+      "session_count": 1,
+      "human_input_count": 11,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 7,
+      "token_total": 41000
+    },
+    {
+      "date": "2026-08-10",
+      "session_count": 0,
+      "human_input_count": 3,
+      "commit_count": 0,
+      "landed_count": 0,
+      "edit_count": 0,
+      "token_total": 0
+    }
+  ],
+  "custom_skill_count": 0,
+  "duration_p90_min": 52.0,
+  "turn_p90": 18,
+  "thinking_block_count": 204,
+  "thinking_sessions": 29,
+  "background_task_count": 0,
+  "background_sessions": 0,
+  "max_parallel_agents": 0,
+  "parallel_agent_turns": 0,
+  "source": "codex",
+  "unmeasured": [
+    "background_sessions",
+    "background_task_count",
+    "commit_count",
+    "dropped_count",
+    "landed_count",
+    "max_parallel_agents",
+    "mcp_server_counts",
+    "mcp_sessions",
+    "option_pick_count",
+    "parallel_agent_turns",
+    "plan_mode_count",
+    "plan_mode_sessions",
+    "skill_counts",
+    "skill_total_counts",
+    "subagent_sessions",
+    "workflow_sessions"
+  ],
+  "capabilities": [
+    "cli_version",
+    "custom_skill",
+    "edit_count",
+    "edited_paths",
+    "project_md",
+    "thinking",
+    "todo_list",
+    "token_usage",
+    "tool_calls"
+  ],
+  "customization_signals": {
+    "has_custom_skills": false,
+    "custom_skill_count": 0,
+    "claude_md_sessions": 3,
+    "has_hooks": null,
+    "hook_events": [],
+    "hooks_measured": false
+  },
+  "parse_health": {
+    "cc_version_span": {
+      "min": "0.60.1",
+      "max": "0.62.4",
+      "distinct": 4
+    },
+    "unknown_record_types": [],
+    "drift_flags": []
+  }
+}

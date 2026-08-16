@@ -1,0 +1,85 @@
+{
+  "breadth": {
+    "headline": "工具面 9 种，集中在读改跑三件事上，编排类动作基本没出现",
+    "points": [
+      "改动一律走结构化补丁（38 场），不是整文件覆写",
+      "外部检索只用了 6 场，多数事实判断仍靠模型记忆"
+    ],
+    "metrics": [
+      {
+        "label": "工具广度",
+        "value": "9 种"
+      },
+      {
+        "label": "编辑数",
+        "value": "388"
+      }
+    ]
+  },
+  "depth": {
+    "headline": "P90 轮次 18，报错闭环较快，但极短输入占比偏高",
+    "points": [
+      "极短输入 136 条（占 29%）：大量「继续 / 可以 / 好的」式放行",
+      "报错锚点 96 次，其中过半集中在 5 场会话里"
+    ],
+    "metrics": [
+      {
+        "label": "P90 轮次",
+        "value": "18"
+      },
+      {
+        "label": "时长 P90",
+        "value": "52 min"
+      }
+    ]
+  },
+  "outcome": {
+    "headline": "落地率 56%：git 主锚口径，独立于会话记录可复算",
+    "points": [
+      "窗口内本人提交 34 次，19 次的改动文件与会话编辑集有交集",
+      "会话内提交回执这一项本来源取不到，落地口径只靠 git 主锚"
+    ],
+    "metrics": [
+      {
+        "label": "落地提交",
+        "value": "19"
+      },
+      {
+        "label": "提交总数",
+        "value": "34"
+      }
+    ],
+    "landed": 19,
+    "total": 34
+  },
+  "frictions": [
+    {
+      "observation": "近三成输入是纯放行（「继续」「可以」），方案定型阶段没有补充过约束。",
+      "suggestion": "放行前加一句「按什么标准算做完」——哪怕只写一条验收条件，也把选择题变成带约束的委托。",
+      "pointers": [
+        "/home/demo/.aci-demo/sessions/demo-cx-0001.jsonl#turn-2a77f5"
+      ]
+    },
+    {
+      "observation": "涉及外部库行为的判断多数没有检索，直接采信了模型给的用法。",
+      "suggestion": "凡是「某个库怎么用」的问题，先让它检索再回答；把这条写进项目约定文件，省得每次口头交代。",
+      "pointers": []
+    }
+  ],
+  "evidence": [
+    {
+      "pointer": "/home/demo/.aci-demo/sessions/demo-cx-0001.jsonl#turn-2a77f5",
+      "behavior": "对 AI 的实现方案只回「可以」，未补充约束即放行"
+    },
+    {
+      "pointer": "/home/demo/.aci-demo/sessions/demo-cx-0002.jsonl#turn-6b0e28",
+      "behavior": "贴出完整报错并指出自己已经排除的两种可能，再让 AI 继续"
+    }
+  ],
+  "highlights": [
+    {
+      "pointer": "/home/demo/.aci-demo/sessions/demo-cx-0002.jsonl#turn-6b0e28",
+      "behavior": "把「已排除的可能性」显式写出来，避免 AI 重复给已被否掉的方案"
+    }
+  ]
+}
