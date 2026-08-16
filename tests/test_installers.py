@@ -317,7 +317,9 @@ def test_plan_install_shape(tmp_path):
     adapter = _tmp_adapter(tmp_path)
     plan = plan_install(SAMPLE, adapter)
     assert set(plan) == {"source", "target", "bytes", "exists", "frontmatter",
-                         "degraded", "invocation"}
+                         "entry", "degraded", "invocation"}
+    # entry：落进 playbook 的命令前缀（跟安装来源走，见 tests/test_install_entry.py）
+    assert plan["entry"] == adapter.command_prefix
     assert plan["source"] == sources.CLAUDE_CODE
     assert plan["target"] == str(tmp_path / "sub" / "out.md")
     assert plan["exists"] is False

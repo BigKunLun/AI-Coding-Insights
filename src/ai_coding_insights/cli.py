@@ -677,14 +677,17 @@ def _cmd_install(args) -> int:
     `--source` 可显式覆盖。`--print` 只预演不落盘（用户该有机会先看清要写哪个文件）。
     """
     # 惰性 import：installers 会去查各家 config 布局，装载失败不该拖垮别的子命令
-    from .installers import (ADAPTERS, InstallError, do_install, invocation_hint,
-                             plan_install)
+    from .installers import (ADAPTERS, InstallError, detect_entry, do_install,
+                             invocation_hint, plan_install, with_entry)
     from .playbook import PlaybookNotFound, load_playbook
 
     src = _resolve_source(args)
     adapter = ADAPTERS.get(src.name)
     if adapter is None:
         raise ConfigError(f"来源 {src.name} 还没有安装适配器（可选：{', '.join(ADAPTERS)}）")
+    # 命令前缀跟**本次 install 自己是怎么装的**走：从 git / 仓库目录装出来的 playbook
+    # 若还写着 `uvx ai-coding-insights`，会去 PyPI 找一个不存在的包。`--entry` 可覆盖。
+    adapter = with_entry(adapter, getattr(args, "entry", None) or detect_entry())
     try:
         text = load_playbook(getattr(args, "playbook", None))
     except PlaybookNotFound as exc:
@@ -859,6 +862,7 @@ def build_parser():
     ins.add_argument("--print", action="store_true")   # 只预演落点，不写盘
     ins.add_argument("--force", action="store_true")   # 覆盖已存在的 playbook
     ins.add_argument("--playbook", default=None)       # 调试用：指定 playbook 正文文件
+    ins.add_argument("--entry", default=None)          # 覆盖命令前缀（默认按安装来源推断）
     return ap, sub
 
 

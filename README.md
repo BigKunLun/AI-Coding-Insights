@@ -41,6 +41,17 @@ uvx ai-coding-insights install --print   # 预演：只打印落点与内容大�
 uvx ai-coding-insights install --source codex --force   # 指定一家 / 覆盖已有
 ```
 
+不想经 PyPI（或想跟着 main 走最新代码），换成 git 源，其余一模一样：
+
+```bash
+uvx --from git+https://github.com/BigKunLun/AI-Coding-Insights ai-coding-insights install
+```
+
+装完的 playbook 会**自动继续指着你装它的那个源**——从 git 装就带 `--from git+…`，
+从仓库目录装（`uv run --project /path/to/AI-Coding-Insights python -m ai_coding_insights install`）
+就指着那份 clone。`--print` 里的 `entry` 字段就是落进去的命令前缀，写盘前可以先核；
+`--entry "<自定义前缀>"` 可显式覆盖。
+
 **第 2 步 · 在你的 agent 里触发一句话**（三家各自的调用约定不同，装完就是这个名字）：
 
 | Harness | 触发 | playbook 落位 |

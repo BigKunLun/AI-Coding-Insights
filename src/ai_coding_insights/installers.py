@@ -87,10 +87,15 @@ spec §2 定的 opendesign 模式——不自建 Harness、不 ship agent，用�
    反例：运行时有子代理，但 rollout 记录里测不出来，故 `sources.py` 不给它 CAP_SUBAGENT，
    而这里给它 `has_subagent=True`。混为一谈会同时产出两种错结论。
 """
+import dataclasses
+import json
 import os
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from . import sources
 
@@ -200,6 +205,112 @@ class Adapter:
 # 之所以仍按适配器逐家声明而不抽成常量：这是**每家各自的调用约定**，哪天有一家需要不同
 # 前缀（比如必须带 `--`透传或换 runner），改的是那一家的一行，而不是去拆一个共享常量。
 _ACI_ENTRY = "uvx ai-coding-insights"
+
+
+# ------------------------------------------------- 命令前缀跟安装来源走（PEP 610）
+#
+# **为什么不能把前缀写死成 `uvx ai-coding-insights`**：那条命令只有包发到 PyPI 才解析
+# 得出来。从 git 装（`uvx --from git+… install`）或从仓库目录装（`uv run … install`）时，
+# install 本身一切正常、落位文件也对，但 playbook 里每条命令都会去 PyPI 找一个不存在的
+# 包——用户看到的是「装好了，一跑就报找不到包」。分发路径不止 PyPI 一条（还有 git、
+# 仓库 clone、CC marketplace 插件），前缀就不能只认一条。
+#
+# 推断依据是 PEP 610 的 `direct_url.json`：uv / pip 从 URL、VCS 或本地目录装包时会把
+# 「这个包是从哪来的」写进发行版元数据。我们把它翻译成「该怎么再调起我」。
+# 读不到、读不懂、或来源形态本身不可复现（比如直接装一个 .whl）→ 一律退回 PyPI 口径，
+# **不许瞎猜**：猜错等于把一条跑不通的命令钉进用户的 playbook。
+
+_DIST_NAME = "ai-coding-insights"
+
+
+def entry_from_direct_url(raw: str | None) -> str | None:
+    """PEP 610 `direct_url.json` 正文 → 再调起本工具的命令前缀。**纯函数**，推断不出返回 None。"""
+    if not raw:
+        return None
+    try:
+        info = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(info, dict):
+        return None
+    url = info.get("url")
+    if not isinstance(url, str) or not url:
+        return None
+
+    vcs = info.get("vcs_info")
+    if isinstance(vcs, dict):
+        # 只认 git：别家 VCS 的 `uvx --from` 写法没查证过，宁可退回也不写一条没跑过的命令。
+        if vcs.get("vcs") != "git":
+            return None
+        # 只在用户当初显式指定了修订时才钉。**不拿 commit_id 顶替**——那会把「跟默认
+        # 分支走」的意图偷偷冻结在安装当天那个提交上，用户再也拿不到修复。
+        rev = vcs.get("requested_revision")
+        suffix = f"@{rev}" if isinstance(rev, str) and rev else ""
+        return f"uvx --from git+{url}{suffix} {_DIST_NAME}"
+
+    if isinstance(info.get("dir_info"), dict):
+        # 本地目录（editable 与否都算）：指回那个目录，不经任何索引。
+        # 这就是「直接通过项目走」——clone 下来跑一次 install，playbook 从此指着这份 clone。
+        path = url2pathname(urlparse(url).path)
+        if not path:
+            return None
+        # 必须 quote：路径含空格时不引起来，shell 会把 `--project` 的取值切断，
+        # `uv run` 转头去跑当前目录的项目——又一个不报错的错。
+        return f"uv run --project {shlex.quote(path)} python -m ai_coding_insights"
+
+    # archive_info（直接装一个 wheel/sdist 文件）等形态：没有可复现的再调起写法。
+    return None
+
+
+def read_direct_url() -> str | None:
+    """读本进程所属发行版的 `direct_url.json` 正文。**薄 IO 层**，读不到返回 None。
+
+    单独拆出来只为可测：推断逻辑全在 `entry_from_direct_url` 那个纯函数里。
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, distribution
+        return distribution(_DIST_NAME).read_text("direct_url.json")
+    except Exception:      # noqa: BLE001 —— 元数据缺失绝不能拖垮安装，退回默认即可
+        return None
+
+
+def detect_entry() -> str:
+    """推断命令前缀；推断不出退回 PyPI 口径。**永远返回一条非空命令**。"""
+    return entry_from_direct_url(read_direct_url()) or _ACI_ENTRY
+
+
+def bash_glob_for(entry: str) -> str:
+    """命令前缀 → allowed-tools 里对应的 Bash 白名单条目。**纯函数**。
+
+    白名单与前缀失配的表现不是报错，而是**每条命令都弹一次权限确认**，编排卡在半路。
+    故这里是唯一真相源：前缀一变，白名单跟着这个函数走，不许两边各写各的。
+    """
+    toks = entry.split()
+    # `uv run` 要连着取两个词：白名单写 `Bash(uv *)` 会顺带放行 `uv pip` 之类，太宽。
+    head = "uv run" if toks[:2] == ["uv", "run"] else (toks[0] if toks else entry)
+    return f"Bash({head} *)"
+
+
+def with_entry(adapter: "Adapter", entry: str | None) -> "Adapter":
+    """换掉适配器的命令前缀，**并同步 frontmatter 里的 allowed-tools**。纯函数。
+
+    返回新对象：`ADAPTERS` 是模块级共享 dict，原地改会污染同进程里的其他调用。
+    `entry` 为空即原样返回（调用方不必自己判空）。
+    """
+    if not entry or not entry.strip():
+        return adapter
+    entry = entry.strip()
+    fm = dict(adapter.frontmatter)
+    allowed = fm.get("allowed-tools")
+    # 没有 allowed-tools 的家（Codex / opencode 的规范里就没这个键）不许凭空加一个：
+    # 多写一个字段就是给未来的严格解析器埋雷。
+    if isinstance(allowed, str) and allowed:
+        old, new = bash_glob_for(adapter.command_prefix), bash_glob_for(entry)
+        # 替换而非追加：并存等于白名单越放越宽，把已经用不上的入口继续开着。
+        fm["allowed-tools"] = allowed.replace(old, new) if old in allowed else \
+            f"{new}, {allowed}"
+    return dataclasses.replace(adapter, command_prefix=entry, frontmatter=fm)
+
 
 ADAPTERS: dict[str, Adapter] = {
     sources.CLAUDE_CODE: Adapter(
@@ -407,6 +518,8 @@ def plan_install(playbook_text: str, adapter: Adapter) -> dict:
         "bytes": len(rendered.encode("utf-8")),
         "exists": target.exists(),
         "frontmatter": dict(adapter.frontmatter),   # 拷贝，别让调用方改坏共享的 ADAPTERS
+        # 前缀跟安装来源走，`--print` 是用户写盘前唯一的核对窗口，必须看得见落进去的是哪条
+        "entry": adapter.command_prefix,
         "degraded": not adapter.has_subagent,
         "invocation": invocation_hint(adapter, target),
     }
