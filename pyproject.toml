@@ -7,7 +7,8 @@ version = "1.0.0a1"
 description = "只读本机 AI 编码会话记录，在本地产出一份 AI 协作画像与摩擦建议报告；数据不出本机。"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "shijianing", email = "shijianing1210@gmail.com" }]
 keywords = [
     "claude-code",

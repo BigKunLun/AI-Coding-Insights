@@ -12,7 +12,7 @@
 uvx ai-coding-insights install
 ```
 
-<img src="docs/demo/screenshot-hero.png" alt="报告首屏（假数据 demo）" width="820">
+<img src="https://raw.githubusercontent.com/BigKunLun/AI-Coding-Insights/main/docs/demo/screenshot-hero.png" alt="报告首屏（假数据 demo）" width="820">
 
 <sub>↑ 真实渲染的 <a href="docs/demo/aci-report-demo.html">demo 报告</a>截图，数据全部虚构</sub>
 
@@ -55,7 +55,7 @@ uvx ai-coding-insights install --source codex --force   # 指定一家 / 覆盖�
 > Claude Code。判定只看当前进程的环境变量，不去 PATH 上探测「你装了什么」——装了不等于在用。
 
 <div align="center">
-<img src="docs/demo/demo.gif" alt="报告长什么样：横幅四数 → 指标明细 → 姿势分布 → 四维雷达 → 摩擦建议 → 能力盲区" width="900">
+<img src="https://raw.githubusercontent.com/BigKunLun/AI-Coding-Insights/main/docs/demo/demo.gif" alt="报告长什么样：横幅四数 → 指标明细 → 姿势分布 → 四维雷达 → 摩擦建议 → 能力盲区" width="900">
 </div>
 
 <sub>15 秒滚一遍 demo 报告（假数据）。每一帧都是 headless Chrome 对
@@ -71,7 +71,7 @@ uvx ai-coding-insights install --source codex --force   # 指定一家 / 覆盖�
 - [`docs/demo/aci-report-demo-codex.html`](docs/demo/aci-report-demo-codex.html) —— Codex 场景：**「未测量 ≠ 0」**的渲染与置顶的来源口径 caveat。
 
 <div align="center">
-<img src="docs/demo/demo-codex-unmeasured.gif" alt="Codex 场景：主网格全是实数，折叠区块列出本来源测不到的 7 项" width="820">
+<img src="https://raw.githubusercontent.com/BigKunLun/AI-Coding-Insights/main/docs/demo/demo-codex-unmeasured.gif" alt="Codex 场景：主网格全是实数，折叠区块列出本来源测不到的 7 项" width="820">
 <br><sub>Codex 能力子集下的报告：<b>主网格只放测得到的指标</b>，
 测不到的收进折叠区块——点开就能看到是哪几项。<b>测不到 ≠ 0</b>，
 把 Codex 里根本不存在的 Workflow 渲染成「0 次」，用户读到的是「你没用过」这个错误结论。</sub>
