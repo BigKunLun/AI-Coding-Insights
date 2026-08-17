@@ -94,9 +94,13 @@ def replay_windows(first_day: date, last_day: date, window_days: int = REPLAY_WI
 
 
 # 回放切片测不到的键：git 三键要跑 git log（每片一次子进程，且落地率是奖惩挂钩指标，
-# 宁可不测也不能测错）；姿态四档要跑 LLM extractor。这些在 replay 里是**未测量**，
-# 不是真值 0——故伪快照里整键不放，让 extract_series 自然跳过、calibrate 如实报「无样本」。
-REPLAY_UNMEASURED = frozenset(_CALIBER_SENSITIVE_KEYS)
+# 宁可不测也不能测错）；姿态四档要跑 LLM extractor；`custom_skill_count` 来自
+# **文件系统当下状态**的扫描，压根没有时间维度——把今天的技能数按到半年前的切片上
+# 是时序错置，而回放路径此前连扫都没扫、直接吃了 aggregate 的默认 0（实测：scan 报
+# 32、replay 报 0，s4_custom_min 于是被定位成「无人过门」，诱导反向调阈值）。
+# 这些在 replay 里是**未测量**，不是真值 0——故伪快照里整键不放，
+# 让 extract_series 自然跳过、calibrate 如实报「无样本」。
+REPLAY_UNMEASURED = frozenset(_CALIBER_SENSITIVE_KEYS) | {"custom_skill_count"}
 
 
 def window_indices(last_days, windows) -> list:
@@ -491,8 +495,11 @@ def format_report(result: dict) -> str:
             lines.append(f"  {rp['empty_windows']} 个窗口内没有会话，已跳过（空窗不是低用量）")
         if rp.get("reason"):
             lines.append(f"  {rp['reason']}")
-        lines.append("  git 落地与姿态四档在回放里**未测量**（不跑 git log、不跑 LLM），"
-                     "相关阈值会如实标无样本")
+        # 这份清单必须与 REPLAY_UNMEASURED 同步（tests/test_replay.py 有闸门）：
+        # 漏掉一项，用户就会把「回放没测」读成「测出来是 0」。
+        lines.append("  git 落地、姿态四档与自建技能数在回放里**未测量**"
+                     "（不跑 git log、不跑 LLM、不按历史切片扫文件系统），"
+                     "相关阈值会如实标无样本；高阶编排依赖自建技能数，整条一并无样本")
     else:
         lines.append(f"样本：{n} 个快照{span_txt}")
     stale = result.get("stale_rubric_count") or 0

@@ -17,7 +17,7 @@ allowed-tools: Bash(uv run *), Bash(date *), Agent, Read, Write
 ## 铁律与速查（贯穿全程）
 
 ### 脱敏铁律
-写入画像 / 证据 / 建议 / 小结的**所有自由文本**只描述**行为模式与量级**，**绝不**引用业务内容。原文与业务语义**永不出本机**。
+写入画像 / 证据 / 建议 / 小结的**所有自由文本**只描述**行为模式与量级**，**绝不**引用业务内容。业务语义**到你这一步为止**：不得写进任何产物（画像 / 证据 / 报告 / 快照）——会话原文只存在于 batch 这一层，后续专家一律读不到，你是最后一道闸。
 - **【脱敏字段集】**（下文多处引用此名）：`headline`、`points`、`metrics.label`、`frictions.observation/suggestion`、`evidence.behavior`、`highlights.behavior`、obs 的 `notable_turns.behavior` 与 `notable_turns.redacted_excerpt`。
 - **【业务词黑名单】**：客户名 / 功能名 / 产品方向 / 架构细节 / 含业务词的文件名。
 - ✓「推翻 AI 一处实现方案并给出更优约束」「累计 N 次提交、落地率 X%」　✗「重构虚拟手环数据服务」「支付通道限流实现」

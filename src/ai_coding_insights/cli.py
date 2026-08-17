@@ -769,6 +769,10 @@ def _replay_snapshots(args) -> tuple:
     for (since, until), idx in zip(windows, window_indices(last_days, windows)):
         if not idx:
             continue    # 空窗口不产样本：0 会话的「量级 0」是空窗不是低用量，混进分布即掺假
+        # repo_outcomes / custom_skill_count / claude_md_sessions 这里**故意不给**：
+        # 前者要跑 git log，后两者一个是文件系统当下状态、一个不进快照白名单。
+        # 它们在这条路径上是「未测量」，靠 REPLAY_UNMEASURED 在伪快照里整键剔除，
+        # 而不是让 aggregate 的默认 0 冒充观测（见 calibrate.REPLAY_UNMEASURED 注释）。
         m = aggregate_metrics([sessions[i] for i in idx], [stats[i] for i in idx],
                               [outcomes[i] for i in idx], repo_outcomes={}, source=src)
         snaps.append(replay_snapshot(until, _metrics_dict(m)))

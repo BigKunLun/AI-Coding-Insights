@@ -76,6 +76,33 @@ def test_伪快照_未测量的键整键不放而非填零():
         assert k not in snap["metrics"], k
 
 
+def test_伪快照_自建技能数整键不放而非填零():
+    """自建技能数来自**文件系统当下状态**，不是任何历史切片的观测。
+
+    回归：`_replay_snapshots` 调 aggregate_metrics 时没传 custom_skill_count，
+    默认值 0 一路进伪快照，calibrate 于是把 s4_custom_min 定位成「100% 分位 /
+    无人过门」，诱导人把门调低——而真实 scan 口径下这台机器是 32。
+    「未测量 ≠ 0」是本项目的承重约束，回放通道不能例外。
+    """
+    snap = replay_snapshot(date(2026, 7, 1), {"active_days": 12, "custom_skill_count": 0})
+    assert "custom_skill_count" not in snap["metrics"]
+    assert "custom_skill_count" in REPLAY_UNMEASURED
+
+
+def test_回放快照里高阶编排整条跳过而非按缺分项算低():
+    """advanced_orchestration 的三个分项缺一，整条派生观测就该跳过。
+
+    拿 2/3 个分项凑出来的合成值必然偏低，比没有观测更坏——它看起来像真数据。
+    """
+    snaps = [replay_snapshot(date(2026, 7, i + 1),
+                             {"active_days": 12, "max_parallel_agents": 3,
+                              "background_sessions": 4, "custom_skill_count": 0})
+             for i in range(3)]
+    rows = {r["name"]: r for r in calibrate(snaps)["thresholds"]}
+    assert rows["s4_custom_min"]["n"] == 0
+    assert rows["s4_advanced"]["n"] == 0
+
+
 def test_伪快照_不带姿态分布():
     snap = replay_snapshot(date(2026, 7, 1), {"active_days": 3})
     assert "posture_distribution" not in snap
@@ -101,6 +128,21 @@ def test_回放快照喂进calibrate后git阈值如实报无样本():
 
 
 from ai_coding_insights.calibrate import _fmt, describe, format_report
+
+
+def test_回放口径声明必须列全未测量项():
+    """抬头那句「回放里未测量的是哪些」漏一项，用户就会把幽灵 0 当真值读。
+
+    列表与 REPLAY_UNMEASURED 同步是纪律，这条断言把它变成闸门。
+    """
+    snaps = [replay_snapshot(date(2026, 7, 1), {"active_days": 12})]
+    result = calibrate(snaps)
+    result["replay"] = {"window_days": 30, "step_days": 30, "overlapping": False}
+    text = format_report(result)
+    head = text.split("== 指标分布 ==")[0]
+    assert "未测量" in head
+    for word in ("git 落地", "姿态四档", "自建技能数"):
+        assert word in head, word
 
 
 def test_大数用紧凑单位不撑破列宽():
